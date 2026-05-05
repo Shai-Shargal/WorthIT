@@ -1,6 +1,5 @@
 export type Verdict = 'Good' | 'Fair' | 'Bad';
 export type ConditionLabel = 'excellent' | 'good' | 'fair' | 'poor';
-export type ListingSource = 'facebook' | 'yad2';
 
 export interface ScoreBreakdown {
   priceScore: number;
@@ -20,33 +19,20 @@ export interface MarketSummary {
   sampleSize: number;
 }
 
-export interface AnalyzeProduct {
-  name: string;
+export interface ExtractedListing {
+  title: string;
   price: number;
+  /** ISO 4217 code (e.g. ILS, USD) inferred from the price label or page locale. */
   currency: string;
+  url?: string;
+  image?: string;
 }
 
-export interface AnalyzeResponse {
-  product: AnalyzeProduct;
-  market: {
-    median: number;
-    mean: number;
-    min: number;
-    max: number;
-    sampleSize: number;
-  };
-  score: number;
-  verdict: Verdict;
-  breakdown: ScoreBreakdown;
-  condition: ConditionSummary;
-  explanation: string;
-}
-
-export interface SearchResult {
+export interface AnalyzedListing {
   id: string;
   title: string;
   price: number;
-  source: ListingSource;
+  source: 'facebook' | 'yad2';
   currency?: string;
   url?: string;
   image?: string;
@@ -56,11 +42,17 @@ export interface SearchResult {
   verdict: Verdict;
   breakdown: ScoreBreakdown;
   condition: ConditionSummary;
+  /** Market stats for this listing’s own title (per-product compare). */
   comps: MarketSummary;
 }
 
-export interface SearchResponse {
+export interface AnalyzeBulkResponse {
   query: string;
+  /** Legacy aggregate field; extension flow uses per-row `comps` instead. */
   market: MarketSummary | null;
-  results: SearchResult[];
+  results: AnalyzedListing[];
 }
+
+export type WorthitMessage =
+  | { type: 'WORTHIT_SCORE' }
+  | { type: 'WORTHIT_PING' };

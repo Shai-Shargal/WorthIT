@@ -1,0 +1,1 @@
+{"root":["./src/api.ts","./src/background.ts","./src/extractor.ts","./src/fb-title-filters.ts","./src/overlay.ts","./src/score-runtime.ts","./src/types.ts","./src/popup/popup.ts","./manifest.config.ts","./vite.config.ts"],"version":"5.9.3"}

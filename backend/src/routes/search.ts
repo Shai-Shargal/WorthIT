@@ -6,6 +6,7 @@ import { computeStats, removeOutliers } from '../services/statistics.js';
 import { score } from '../services/scoring.js';
 import { analyzeCondition } from '../services/condition.js';
 import { computeFinalScore, finalVerdict } from '../services/finalScore.js';
+import { withConcurrency } from '../services/concurrency.js';
 
 export const searchRouter = Router();
 
@@ -14,23 +15,6 @@ const querySchema = z.object({
 });
 
 const CONDITION_CONCURRENCY = 4;
-
-async function withConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let cursor = 0;
-
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (true) {
-      const index = cursor;
-      cursor += 1;
-      if (index >= items.length) return;
-      results[index] = await fn(items[index]);
-    }
-  });
-
-  await Promise.all(workers);
-  return results;
-}
 
 searchRouter.get('/', async (req, res, next) => {
   try {
@@ -73,6 +57,13 @@ searchRouter.get('/', async (req, res, next) => {
           condition: {
             label: condition.conditionLabel,
             signals: condition.signals,
+          },
+          comps: {
+            median: stats.median,
+            mean: stats.mean,
+            min: stats.min,
+            max: stats.max,
+            sampleSize: stats.sampleSize,
           },
         };
       })

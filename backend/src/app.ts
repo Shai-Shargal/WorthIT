@@ -1,6 +1,7 @@
 import express, { type Application, type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
 import { analyzeRouter } from './routes/analyze.js';
+import { analyzeBulkRouter } from './routes/analyzeBulk.js';
 import { searchRouter } from './routes/search.js';
 import { mongoStatus } from './db/mongoose.js';
 
@@ -8,13 +9,14 @@ export function createApp(): Application {
   const app = express();
 
   app.use(cors());
-  app.use(express.json({ limit: '256kb' }));
+  app.use(express.json({ limit: '1mb' }));
 
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok', db: mongoStatus() });
   });
 
   app.use('/analyze', analyzeRouter);
+  app.use('/analyze-bulk', analyzeBulkRouter);
   app.use('/search', searchRouter);
 
   app.use((req, res) => {

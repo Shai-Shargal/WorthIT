@@ -1,4 +1,4 @@
-import type { ConditionSummary, ScoreBreakdown, Verdict } from '../types.js';
+import type { ConditionSummary, MarketStats, ScoreBreakdown, Verdict } from '../types.js';
 
 export type ListingSource = 'facebook' | 'yad2';
 
@@ -7,6 +7,7 @@ export interface Listing {
   title: string;
   price: number;
   source: ListingSource;
+  currency?: string;
   url?: string;
   image?: string;
   location?: string;
@@ -18,4 +19,6 @@ export interface AnalyzedListing extends Listing {
   verdict: Verdict;
   breakdown: ScoreBreakdown;
   condition: ConditionSummary;
+  /** Comparable market stats for THIS listing title (provider-specific sample). */
+  comps: MarketStats;
 }

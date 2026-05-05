@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>WorthIT</title>
+    <link rel="stylesheet" href="./popup.css" />
+  </head>
+  <body>
+    <div class="popup">
+      <header class="popup__header">
+        <span class="popup__logo">W</span>
+        <div>
+          <h1 class="popup__title">WorthIT</h1>
+          <p class="popup__subtitle">Score the listings on this page.</p>
+        </div>
+      </header>
+
+      <button id="score" class="popup__btn">Score this page</button>
+
+      <p id="status" class="popup__status" role="status" aria-live="polite"></p>
+
+      <footer class="popup__footer">
+        <span>Backend:</span>
+        <code id="api-base">http://localhost:4000</code>
+      </footer>
+    </div>
+    <script type="module" src="./popup.ts"></script>
+  </body>
+</html>

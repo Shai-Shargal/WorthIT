@@ -1,0 +1,20 @@
+{
+  "name": "worthit-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "WorthIT Chrome extension - score Facebook Marketplace listings on the page.",
+  "scripts": {
+    "dev": "vite build --watch --mode development",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.0.0-beta.32",
+    "@types/chrome": "^0.0.279",
+    "@types/node": "^20.19.39",
+    "esbuild": "^0.27.3",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.21"
+  }
+}

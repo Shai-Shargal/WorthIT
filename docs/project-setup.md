@@ -51,6 +51,7 @@ The project is divided into 3 main parts:
 root/
 ├── frontend/
 ├── backend/
+├── extension/        # Chrome MV3 extension (Vite + @crxjs/vite-plugin)
 ├── docs/
 │   ├── project-setup.md
 │   ├── features/
