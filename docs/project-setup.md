@@ -4,7 +4,7 @@
 
 WorthIT is an AI-powered system that analyzes second-hand deals and determines whether they are worth it.
 
-Users can paste a product listing (text or link), and the system will:
+Users can score listings discovered from marketplace pages, and the system will:
 
 * Extract product details (name, price, condition)
 * Perform market research using external data sources
@@ -18,14 +18,12 @@ Users can paste a product listing (text or link), and the system will:
 
 The project is divided into 3 main parts:
 
-### 1. Frontend
+### 1. Extension client
 
-* React + TypeScript
-* Simple UI:
-
-  * Input (paste deal)
-  * Button (analyze)
-  * Result display
+* Chrome MV3 extension
+* Extracts visible listings from supported marketplace DOM
+* Sends listings to backend for scoring
+* Renders score/verdict overlay in-page
 
 ### 2. Backend
 
@@ -49,7 +47,6 @@ The project is divided into 3 main parts:
 ## 📁 Folder Structure
 
 root/
-├── frontend/
 ├── backend/
 ├── extension/        # Chrome MV3 extension (Vite + @crxjs/vite-plugin)
 ├── docs/
@@ -62,11 +59,10 @@ root/
 
 ## ⚙️ Tech Stack
 
-### Frontend
+### Extension
 
-* React
 * TypeScript
-* (Optional: Tailwind / MUI)
+* Chrome Extension APIs (MV3)
 
 ### Backend
 
@@ -84,12 +80,12 @@ root/
 
 The first version of WorthIT should support:
 
-1. User inputs a product description
+1. Extension extracts listings from the current marketplace page
 2. System extracts:
 
    * Product name
    * Price
-3. System uses mock market data
+3. System fetches comparable market data
 4. System calculates:
 
    * Median price
@@ -113,7 +109,7 @@ The first version of WorthIT should support:
 
 ## 📌 Next Steps
 
-1. Create project structure (frontend/backend/docs)
-2. Initialize frontend (React + TS)
-3. Initialize backend (Node + TS)
-4. Implement first feature: `analyzeDeal`
+1. Keep extension extraction stable across DOM changes
+2. Improve comparable-market lookup quality per listing title
+3. Improve AI feedback quality per product
+4. Harden retry/error handling and observability

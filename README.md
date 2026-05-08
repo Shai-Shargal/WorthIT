@@ -1,6 +1,6 @@
 # WorthIT
 
-AI-assisted second-hand deal checker: paste listing text, compare the asking price to market statistics, get a score and verdict.
+AI-assisted second-hand deal checker focused on browser-assisted sourcing: extract listings from Marketplace pages via the extension, compare prices to market statistics, and get per-listing score and verdict.
 
 ## Quickstart
 
@@ -13,17 +13,7 @@ npm install
 npm run dev
 ```
 
-Terminal 2 — frontend:
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Open the URL printed by Vite (usually `http://localhost:5173`). The UI proxies `/analyze`, `/search`, and `/health` to the backend.
-
-Terminal 3 (optional) — Chrome extension:
+Terminal 2 (optional) — Chrome extension:
 
 ```bash
 cd extension
@@ -36,6 +26,5 @@ Then in Chrome go to `chrome://extensions`, enable Developer mode, click **Load 
 ## Docs
 
 - [Project setup](docs/project-setup.md)
-- [Analyze deal feature](docs/features/analyze-deal.md)
 - [Analyze bulk endpoint](docs/features/analyze-bulk.md)
 - [Chrome extension](extension/README.md)

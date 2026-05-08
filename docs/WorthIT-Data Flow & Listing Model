@@ -29,7 +29,7 @@ The goal is to create a system that:
    * Statistical calculations
    * Score generation
 
-5. System returns analyzed listings to frontend
+5. System returns analyzed listings to the extension/UI client
 
 ---
 
@@ -208,7 +208,7 @@ Separation of concerns:
 
 * Scraping → data collection
 * Analysis → business logic
-* Frontend → presentation
+* Client (extension/UI) → presentation
 
 ---
 
