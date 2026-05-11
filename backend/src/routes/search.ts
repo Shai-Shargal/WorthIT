@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { AnalyzedListing } from '../types/listing.js';
+import type { AnalyzeResponse, ListingSnapshot, MarketObservation, Recommendation } from '../types.js';
 import { fetchListings } from '../services/scraper/index.js';
-import { computeStats, removeOutliers } from '../services/statistics.js';
-import { score } from '../services/scoring.js';
+import { buildMarketContexts } from '../services/marketContext.js';
 import { analyzeCondition } from '../services/condition.js';
-import { computeFinalScore, finalVerdict } from '../services/finalScore.js';
+import { evaluateListing } from '../services/aiEvaluation.js';
 import { withConcurrency } from '../services/concurrency.js';
+import { recordObservations } from '../services/marketObservations.js';
 
 export const searchRouter = Router();
 
@@ -14,7 +14,13 @@ const querySchema = z.object({
   q: z.string().trim().min(1, 'q is required'),
 });
 
-const CONDITION_CONCURRENCY = 4;
+const RECOMMENDATION_RANK: Record<Recommendation, number> = {
+  worth_it: 0,
+  maybe: 1,
+  avoid: 2,
+};
+
+const PIPELINE_CONCURRENCY = 4;
 
 searchRouter.get('/', async (req, res, next) => {
   try {
@@ -28,56 +34,76 @@ searchRouter.get('/', async (req, res, next) => {
     const listings = await fetchListings(q);
 
     if (listings.length === 0) {
-      return res.json({ query: q, market: null, results: [] });
+      return res.json({ query: q, results: [] });
     }
 
-    const prices = listings.map((l) => l.price).filter((p) => Number.isFinite(p) && p > 0);
-    const cleaned = removeOutliers(prices);
-    const usablePrices = cleaned.length > 0 ? cleaned : prices;
-    const stats = computeStats(usablePrices);
+    const observations: MarketObservation[] = listings
+      .filter((l) => Number.isFinite(l.price) && l.price > 0)
+      .map((l) => ({
+        productName: l.title,
+        observedPrice: l.price,
+        currency: (l.currency ?? 'ILS').toUpperCase(),
+        source: l.source,
+        location: l.location,
+        timestamp: l.extractedAt ?? new Date(),
+      }));
 
-    const conditions = await withConcurrency(listings, CONDITION_CONCURRENCY, (l) =>
-      analyzeCondition({ title: l.title, imageUrl: l.image }),
-    );
+    await recordObservations(observations).catch((err) => {
+      console.error('[search] failed to persist observations:', err instanceof Error ? err.message : err);
+    });
 
-    const results: AnalyzedListing[] = listings
-      .map((l, i) => {
-        const condition = conditions[i];
-        const { score: priceScore } = score(l.price, stats.median);
-        const finalScore = computeFinalScore(priceScore, condition.conditionScore);
-        const verdict = finalVerdict(finalScore);
-        return {
-          ...l,
-          score: finalScore,
-          verdict,
-          breakdown: {
-            priceScore,
-            conditionScore: condition.conditionScore,
-          },
-          condition: {
-            label: condition.conditionLabel,
-            signals: condition.signals,
-          },
-          comps: {
-            median: stats.median,
-            mean: stats.mean,
-            min: stats.min,
-            max: stats.max,
-            sampleSize: stats.sampleSize,
-          },
-        };
-      })
-      .sort((a, b) => b.score - a.score);
+    const rowResults = await withConcurrency(listings, PIPELINE_CONCURRENCY, async (l): Promise<AnalyzeResponse | null> => {
+      const currency = (l.currency ?? 'ILS').toUpperCase();
+      const snapshot: ListingSnapshot = {
+        title: l.title,
+        price: l.price,
+        currency,
+        imageUrl: l.image,
+        url: l.url,
+        source: l.source,
+        observedAt: l.extractedAt ?? new Date(),
+      };
+
+      const { localMarketContext, historicalContext } = await buildMarketContexts({
+        name: snapshot.title,
+        currency,
+      });
+
+      if (localMarketContext.observationCount === 0 && historicalContext.totalObservations === 0) {
+        return null;
+      }
+
+      const condition = await analyzeCondition({
+        title: snapshot.title,
+        imageUrl: snapshot.imageUrl,
+      });
+
+      const aiEvaluation = await evaluateListing({
+        listing: snapshot,
+        localMarketContext,
+        historicalContext,
+        condition,
+      });
+
+      return {
+        listing: snapshot,
+        localMarketContext,
+        historicalContext,
+        aiEvaluation,
+      };
+    });
+
+    const results = rowResults
+      .filter((r): r is AnalyzeResponse => r !== null)
+      .sort((a, b) => {
+        const rankDiff = RECOMMENDATION_RANK[a.aiEvaluation.recommendation] -
+          RECOMMENDATION_RANK[b.aiEvaluation.recommendation];
+        if (rankDiff !== 0) return rankDiff;
+        return b.aiEvaluation.confidence - a.aiEvaluation.confidence;
+      });
 
     res.json({
       query: q,
-      market: {
-        median: stats.median,
-        average: stats.mean,
-        min: stats.min,
-        max: stats.max,
-        sampleSize: stats.sampleSize,
-      },
       results,
     });
   } catch (err) {

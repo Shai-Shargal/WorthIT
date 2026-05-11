@@ -1,5 +1,3 @@
-import type { MarketStats } from '../types.js';
-
 function quantile(sorted: number[], q: number): number {
   if (sorted.length === 0) return 0;
   const pos = (sorted.length - 1) * q;
@@ -30,16 +28,22 @@ export function median(values: number[]): number {
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 }
 
-export function computeStats(prices: number[]): MarketStats {
-  if (prices.length === 0) {
-    return { median: 0, mean: 0, min: 0, max: 0, sampleSize: 0 };
-  }
-  const sum = prices.reduce((acc, p) => acc + p, 0);
+export interface PriceDistribution {
+  min: number;
+  max: number;
+  p25: number;
+  p50: number;
+  p75: number;
+}
+
+export function describePrices(prices: number[]): PriceDistribution | null {
+  if (prices.length === 0) return null;
+  const sorted = [...prices].sort((a, b) => a - b);
   return {
-    median: median(prices),
-    mean: sum / prices.length,
-    min: Math.min(...prices),
-    max: Math.max(...prices),
-    sampleSize: prices.length,
+    min: sorted[0],
+    max: sorted[sorted.length - 1],
+    p25: quantile(sorted, 0.25),
+    p50: quantile(sorted, 0.5),
+    p75: quantile(sorted, 0.75),
   };
 }

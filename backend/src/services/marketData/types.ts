@@ -1,3 +1,5 @@
+import type { MarketObservation } from '../../types.js';
+
 export interface MarketDataQuery {
   name: string;
   currency: string;
@@ -5,5 +7,5 @@ export interface MarketDataQuery {
 
 export interface MarketDataProvider {
   readonly id: string;
-  fetchComparablePrices(query: MarketDataQuery): Promise<number[]>;
+  fetchObservations(query: MarketDataQuery): Promise<MarketObservation[]>;
 }

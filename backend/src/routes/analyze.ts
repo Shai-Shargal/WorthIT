@@ -1,13 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { AnalyzeResponse } from '../types.js';
+import type { AnalyzeResponse, ListingSnapshot } from '../types.js';
 import { parseListing } from '../services/parser.js';
-import { getMarketData } from '../services/marketData/index.js';
-import { computeStats, removeOutliers } from '../services/statistics.js';
-import { score } from '../services/scoring.js';
+import { buildMarketContexts } from '../services/marketContext.js';
 import { analyzeCondition } from '../services/condition.js';
-import { computeFinalScore, finalVerdict } from '../services/finalScore.js';
-import { explain } from '../services/explanation.js';
+import { evaluateListing } from '../services/aiEvaluation.js';
 
 export const analyzeRouter = Router();
 
@@ -23,55 +20,39 @@ analyzeRouter.post('/', async (req, res, next) => {
       return res.status(400).json({ error: message });
     }
 
-    const listing = parseListing(parsed.data.input);
-    const rawPrices = await getMarketData({ name: listing.name, currency: listing.currency });
-    const cleaned = removeOutliers(rawPrices);
+    const parsedListing = parseListing(parsed.data.input);
 
-    if (cleaned.length === 0) {
-      return res.status(503).json({
-        error: 'Not enough comparable market data to evaluate this listing.',
-      });
-    }
+    const listing: ListingSnapshot = {
+      title: parsedListing.name,
+      price: parsedListing.price,
+      currency: parsedListing.currency,
+      description: parsedListing.raw,
+      source: 'manual',
+      observedAt: new Date(),
+    };
 
-    const market = computeStats(cleaned);
-    const { score: priceScore } = score(listing.price, market.median);
-    const condition = await analyzeCondition({
-      title: listing.name,
-      description: listing.raw,
+    const { localMarketContext, historicalContext } = await buildMarketContexts({
+      name: listing.title,
+      currency: listing.currency,
     });
-    const finalScore = computeFinalScore(priceScore, condition.conditionScore);
-    const verdict = finalVerdict(finalScore);
 
-    const breakdown = {
-      priceScore,
-      conditionScore: condition.conditionScore,
-    };
-    const conditionSummary = {
-      label: condition.conditionLabel,
-      signals: condition.signals,
-    };
+    const condition = await analyzeCondition({
+      title: listing.title,
+      description: listing.description,
+    });
 
-    const explanation = await explain({
-      product: { name: listing.name, price: listing.price, currency: listing.currency },
-      market,
-      score: finalScore,
-      verdict,
-      breakdown,
-      condition: conditionSummary,
+    const aiEvaluation = await evaluateListing({
+      listing,
+      localMarketContext,
+      historicalContext,
+      condition,
     });
 
     const body: AnalyzeResponse = {
-      product: {
-        name: listing.name,
-        price: listing.price,
-        currency: listing.currency,
-      },
-      market,
-      score: finalScore,
-      verdict,
-      breakdown,
-      condition: conditionSummary,
-      explanation,
+      listing,
+      localMarketContext,
+      historicalContext,
+      aiEvaluation,
     };
 
     res.json(body);

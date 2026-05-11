@@ -1,13 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { AnalyzedListing } from '../types/listing.js';
-import { getMarketData } from '../services/marketData/index.js';
-import { computeStats, removeOutliers } from '../services/statistics.js';
-import { score } from '../services/scoring.js';
+import type { AnalyzeResponse, ListingSnapshot, Recommendation } from '../types.js';
+import { buildMarketContexts } from '../services/marketContext.js';
 import { analyzeCondition } from '../services/condition.js';
-import { computeFinalScore, finalVerdict } from '../services/finalScore.js';
+import { evaluateListing } from '../services/aiEvaluation.js';
 import { withConcurrency } from '../services/concurrency.js';
-import { makeListingId } from '../services/scraper/utils.js';
 import { looksLikeUiNoiseTitle } from '../services/listingTitleQuality.js';
 
 export const analyzeBulkRouter = Router();
@@ -37,6 +34,12 @@ function listingCurrency(globalDefault: string, row?: string): string {
   return raw.slice(0, 8);
 }
 
+const RECOMMENDATION_RANK: Record<Recommendation, number> = {
+  worth_it: 0,
+  maybe: 1,
+  avoid: 2,
+};
+
 const PIPELINE_CONCURRENCY = 6;
 
 analyzeBulkRouter.post('/', async (req, res, next) => {
@@ -62,56 +65,59 @@ analyzeBulkRouter.post('/', async (req, res, next) => {
 
     const now = new Date();
 
-    const rowResults = await withConcurrency(jobs, PIPELINE_CONCURRENCY, async ({ listing, idx }) => {
+    const rowResults = await withConcurrency(jobs, PIPELINE_CONCURRENCY, async ({ listing }): Promise<AnalyzeResponse | null> => {
       const currency = listingCurrency(defaultCurrency, listing.currency);
-      const rawPrices = await getMarketData({ name: listing.title, currency });
-      const cleaned = removeOutliers(rawPrices);
-      const usable = cleaned.length > 0 ? cleaned : rawPrices;
-      if (usable.length === 0) return null;
 
-      const stats = computeStats(usable);
-      const condition = await analyzeCondition({ title: listing.title, imageUrl: listing.image });
-
-      const { score: priceScore } = score(listing.price, stats.median);
-      const finalScore = computeFinalScore(priceScore, condition.conditionScore);
-      const verdict = finalVerdict(finalScore);
-
-      const enriched: AnalyzedListing = {
-        id: makeListingId('facebook', listing.title, idx),
+      const snapshot: ListingSnapshot = {
         title: listing.title,
         price: listing.price,
         currency,
-        source: 'facebook',
+        imageUrl: listing.image,
         url: listing.url,
-        image: listing.image,
-        extractedAt: now,
-        score: finalScore,
-        verdict,
-        breakdown: {
-          priceScore,
-          conditionScore: condition.conditionScore,
-        },
-        condition: {
-          label: condition.conditionLabel,
-          signals: condition.signals,
-        },
-        comps: {
-          median: stats.median,
-          mean: stats.mean,
-          min: stats.min,
-          max: stats.max,
-          sampleSize: stats.sampleSize,
-        },
+        source: 'facebook',
+        observedAt: now,
       };
 
-      return enriched;
+      const { localMarketContext, historicalContext } = await buildMarketContexts({
+        name: snapshot.title,
+        currency: snapshot.currency,
+      });
+
+      if (localMarketContext.observationCount === 0 && historicalContext.totalObservations === 0) {
+        return null;
+      }
+
+      const condition = await analyzeCondition({
+        title: snapshot.title,
+        imageUrl: snapshot.imageUrl,
+      });
+
+      const aiEvaluation = await evaluateListing({
+        listing: snapshot,
+        localMarketContext,
+        historicalContext,
+        condition,
+      });
+
+      return {
+        listing: snapshot,
+        localMarketContext,
+        historicalContext,
+        aiEvaluation,
+      };
     });
 
-    const results = rowResults.filter((r): r is AnalyzedListing => r !== null).sort((a, b) => b.score - a.score);
+    const results = rowResults
+      .filter((r): r is AnalyzeResponse => r !== null)
+      .sort((a, b) => {
+        const rankDiff = RECOMMENDATION_RANK[a.aiEvaluation.recommendation] -
+          RECOMMENDATION_RANK[b.aiEvaluation.recommendation];
+        if (rankDiff !== 0) return rankDiff;
+        return b.aiEvaluation.confidence - a.aiEvaluation.confidence;
+      });
 
     res.json({
       query: pageQuery,
-      market: null,
       results,
     });
   } catch (err) {

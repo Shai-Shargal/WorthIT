@@ -2,15 +2,19 @@
 
 ## Goal
 
-Accept raw listing text from the user, derive product + asking price, compare against comparable market prices, and return a score, verdict, and explanation.
+Accept raw listing text from the user, derive product + asking price, build structured Israeli
+second-hand market context from historical observations, and return an AI-generated evaluation
+with summary, positives, concerns, recommendation, and confidence.
 
-## Non-goals (MVP)
+WorthIT does **not** assert a single "true price". It reasons over evolving local observations and
+communicates uncertainty.
 
-- Scraping Facebook Marketplace or Yad2 (or any unreliable source).
+## Non-goals
+
+- Hardcoded `score` / `verdict` math (removed in this refactor).
+- Scraping Facebook Marketplace or Yad2 inside `/analyze` (handled by `/search`).
 - Fetching arbitrary URLs for link-only input (explicit `TODO` in parser).
 - Authentication, quotas, subscriptions.
-- Persisting analyses or caching market data in MongoDB (planned later).
-- Production-grade LLM integration (stub template first; OpenAI wiring is `TODO`).
 
 ## API contract
 
@@ -28,21 +32,46 @@ Validation: `input` must be a non-empty string after trim.
 
 ```json
 {
-  "product": {
-    "name": "string",
-    "price": "number",
-    "currency": "string (ISO-like code, e.g. USD)"
+  "listing": {
+    "title": "string",
+    "price": 1500,
+    "currency": "ILS",
+    "description": "raw listing text",
+    "source": "manual",
+    "observedAt": "2026-01-15T00:00:00.000Z"
   },
-  "market": {
-    "median": "number",
-    "mean": "number",
-    "min": "number",
-    "max": "number",
-    "sampleSize": "number"
+  "localMarketContext": {
+    "query": "iPhone 13",
+    "currency": "ILS",
+    "observationCount": 7,
+    "priceRange": { "min": 1800, "max": 2400 },
+    "typicalPrice": { "p25": 1900, "p50": 2050, "p75": 2200 },
+    "recentObservations": [
+      {
+        "productName": "iPhone 13 128GB",
+        "observedPrice": 2000,
+        "currency": "ILS",
+        "source": "yad2",
+        "timestamp": "2026-01-08T00:00:00.000Z"
+      }
+    ],
+    "notes": []
   },
-  "score": "integer 0–100",
-  "verdict": "Good | Fair | Bad",
-  "explanation": "string"
+  "historicalContext": {
+    "query": "iPhone 13",
+    "totalObservations": 12,
+    "oldestTimestamp": "2025-04-01T00:00:00.000Z",
+    "newestTimestamp": "2025-10-12T00:00:00.000Z",
+    "observations": [ "..." ]
+  },
+  "aiEvaluation": {
+    "summary": "Listing sits slightly below the typical Israeli market band; confidence is medium.",
+    "positives": ["Below local p50", "Recent comparable listings exist"],
+    "concerns": ["Few recent observations"],
+    "recommendation": "worth_it",
+    "confidence": 0.62,
+    "estimatedValue": { "min": 1800, "max": 2300, "currency": "ILS" }
+  }
 }
 ```
 
@@ -50,54 +79,47 @@ Validation: `input` must be a non-empty string after trim.
 
 | Status | Meaning                                              |
 | ------ | ---------------------------------------------------- |
-| 400    | Invalid body, empty input, missing price, link-only |
-| 503    | Not enough comparable prices after cleaning          |
+| 400    | Invalid body, empty input, missing price, link-only  |
 | 500    | Unexpected server error                              |
+
+Note: there is no more `503` for "not enough data". When the observation store is empty the
+backend falls back to a synthetic seed provider and the AI evaluator reports low confidence.
 
 ## Pipeline stages
 
-1. **Parse listing** (`services/parser.ts`)
+1. **Parse listing** (`services/parser.ts`) — extract title, price, currency from free text.
 
-   - Extract numeric price from free text (supports optional currency symbols / codes).
-   - Finds every price-like token; uses the **last** match as the listing amount (typical: description ends with the asking price).
-   - Comma-separated thousands must include at least one `,ddd` segment so values like `1500` are not truncated to `150`.
-   - Derive product name by stripping that matched span from the input.
-   - Links: reject with 400 until URL fetching is implemented.
+2. **Build market contexts** (`services/marketContext.ts`)
+   - Recent window (≤90d) → `LocalMarketContext` (count, IQR-cleaned price range, `p25/p50/p75`).
+   - Older window → `HistoricalContext` with oldest/newest timestamps.
+   - Falls back to the seed provider in `services/marketData/providers/static.ts` when no
+     observations are stored (dev-friendly default).
 
-2. **Market data** (`services/marketData/`)
+3. **Condition signals** (`services/condition.ts`) — extracted from the title/description and
+   passed as one of many AI inputs (no more `conditionScore` math).
 
-   - Pluggable `MarketDataProvider` with `fetchComparablePrices({ name, currency }) → Promise<number[]>`.
-   - Provider selected via `MARKET_DATA_PROVIDER` (default `static`).
-   - Current `static` implementation is a **stub** returning fixed numbers; replace with real providers later (e.g. Yad2/Facebook via Playwright).
+4. **AI evaluation** (`services/aiEvaluation.ts`)
+   - Calls OpenAI with an Israeli-market-aware system prompt.
+   - Validates the response with `zod` and clamps `confidence` to `[0, 1]`.
+   - Deterministic fallback when `OPENAI_API_KEY` / `LLM_API_KEY` is not configured.
 
-3. **Clean & aggregate** (`services/statistics.ts`)
+## Philosophy
 
-   - Remove outliers via Tukey IQR (fences `Q1 - 1.5×IQR`, `Q3 + 1.5×IQR`).
-   - If fewer than 4 samples, skip outlier removal (keep all).
-   - Compute **median** (primary), mean, min, max, sample size.
-
-4. **Score & verdict** (`services/scoring.ts`)
-
-   - Raw ratio: `(median - price) / median`, clamped to `[-1, 1]`.
-   - Map to score: `(ratio + 1) × 50`, rounded, clamped to `[0, 100]`.
-     - Interpretation: **50 ≈ at median**; higher = cheaper vs market; lower = more expensive.
-   - Verdict thresholds (on integer score):
-     - **Good**: score ≥ 65
-     - **Fair**: 45 ≤ score < 65
-     - **Bad**: score < 45
-   - If `median ≤ 0` or non-finite: return `{ score: 50, verdict: 'Fair' }` (defensive).
-
-5. **Explanation** (`services/explanation.ts`)
-
-   - MVP: deterministic paragraph from context (price vs median, range, verdict).
-   - Future: LLM using `LLM_API_KEY` (`TODO`).
+- Markets shift; prices drift; listings disappear. We model observations, not "the price".
+- AI does the reasoning. The backend only provides clean, structured context.
+- Communicate uncertainty naturally — every response carries a `confidence` and may omit
+  `estimatedValue` when context is too thin.
 
 ## Extension points
 
-- Add a provider under `backend/src/services/marketData/providers/` and register it in `services/marketData/index.ts`.
-- Keep HTTP handler thin: validation + orchestration only in `routes/analyze.ts`.
+- Add a new market data provider under `backend/src/services/marketData/providers/` and register
+  it in `services/marketData/index.ts`.
+- Real Israeli sources (Yad2, Facebook Marketplace IL, Telegram crawlers) should write
+  `MarketObservation` rows via `services/marketObservations.ts.recordObservations`.
+- The `MarketObservation` Mongo collection is the long-term market memory of the system.
 
 ## Frontend
 
-- `POST /analyze` via dev proxy to backend (`vite.config.ts`).
-- Display product, price, median, score, verdict, explanation.
+- The Chrome extension renders the new `aiEvaluation` (recommendation badge, summary,
+  positives/concerns, confidence bar, estimated value range). See
+  `extension/src/overlay.ts`.

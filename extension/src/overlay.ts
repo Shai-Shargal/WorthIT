@@ -1,11 +1,17 @@
-import type { AnalyzeBulkResponse, AnalyzedListing, Verdict } from './types';
+import type { AnalyzeBulkResponse, AnalyzeResponse, Recommendation } from './types';
 
 const OVERLAY_ID = 'worthit-overlay';
 
-const COLORS: Record<Verdict, string> = {
-  Good: '#22c55e',
-  Fair: '#f59e0b',
-  Bad: '#ef4444',
+const RECOMMENDATION_COLORS: Record<Recommendation, string> = {
+  worth_it: '#22c55e',
+  maybe: '#f59e0b',
+  avoid: '#ef4444',
+};
+
+const RECOMMENDATION_LABELS: Record<Recommendation, string> = {
+  worth_it: 'Worth it',
+  maybe: 'Maybe',
+  avoid: 'Avoid',
 };
 
 function styleEl(el: HTMLElement, styles: Partial<CSSStyleDeclaration>): void {
@@ -30,8 +36,8 @@ function buildShell(): { root: HTMLDivElement; body: HTMLDivElement; subheader: 
     position: 'fixed',
     top: '16px',
     right: '16px',
-    width: '360px',
-    maxHeight: '70vh',
+    width: '380px',
+    maxHeight: '78vh',
     overflow: 'auto',
     background: '#ffffff',
     color: '#0f172a',
@@ -102,7 +108,7 @@ function buildShell(): { root: HTMLDivElement; body: HTMLDivElement; subheader: 
   });
 
   const body = el('div');
-  styleEl(body, { display: 'flex', flexDirection: 'column', gap: '8px' });
+  styleEl(body, { display: 'flex', flexDirection: 'column', gap: '10px' });
 
   root.appendChild(header);
   root.appendChild(subheader);
@@ -136,7 +142,7 @@ function spinner(): HTMLDivElement {
     animation: 'worthitSpin 0.9s linear infinite',
   });
   ensureKeyframes();
-  const label = el('div', { fontSize: '13px' }, 'Scoring listings…');
+  const label = el('div', { fontSize: '13px' }, 'Asking the AI…');
   wrap.appendChild(ring);
   wrap.appendChild(label);
   return wrap;
@@ -162,10 +168,61 @@ function formatMoney(price: number, currency = 'USD'): string {
   }
 }
 
-function buildRow(listing: AnalyzedListing): HTMLElement {
-  const wrapper = listing.url
-    ? el('a')
-    : el('div');
+function buildBullets(items: string[], color: string): HTMLDivElement {
+  const list = el('div');
+  styleEl(list, {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
+  });
+  for (const item of items.slice(0, 5)) {
+    const row = el('div');
+    styleEl(row, {
+      fontSize: '11px',
+      color,
+      paddingLeft: '10px',
+      position: 'relative',
+    });
+    row.textContent = `• ${item}`;
+    list.appendChild(row);
+  }
+  return list;
+}
+
+function buildConfidenceBar(confidence: number): HTMLDivElement {
+  const wrap = el('div');
+  styleEl(wrap, {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    fontSize: '10px',
+    color: '#64748b',
+  });
+  const label = el('span', undefined, `Confidence ${Math.round(confidence * 100)}%`);
+  const track = el('div');
+  styleEl(track, {
+    flex: '1 1 auto',
+    height: '4px',
+    background: '#e2e8f0',
+    borderRadius: '999px',
+    overflow: 'hidden',
+  });
+  const fill = el('div');
+  styleEl(fill, {
+    width: `${Math.max(0, Math.min(100, Math.round(confidence * 100)))}%`,
+    height: '100%',
+    background: '#0f172a',
+  });
+  track.appendChild(fill);
+  wrap.appendChild(label);
+  wrap.appendChild(track);
+  return wrap;
+}
+
+function buildRow(item: AnalyzeResponse): HTMLElement {
+  const { listing, aiEvaluation, localMarketContext } = item;
+
+  const wrapper = listing.url ? el('a') : el('div');
   if (wrapper instanceof HTMLAnchorElement && listing.url) {
     wrapper.href = listing.url;
     wrapper.target = '_blank';
@@ -173,9 +230,9 @@ function buildRow(listing: AnalyzedListing): HTMLElement {
   }
   styleEl(wrapper as HTMLElement, {
     display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    padding: '8px',
+    flexDirection: 'column',
+    gap: '8px',
+    padding: '10px',
     border: '1px solid #e2e8f0',
     borderRadius: '10px',
     background: '#ffffff',
@@ -192,11 +249,15 @@ function buildRow(listing: AnalyzedListing): HTMLElement {
     (wrapper as HTMLElement).style.boxShadow = 'none';
   });
 
-  if (listing.image) {
+  // Top row: image + title/price + recommendation pill
+  const top = el('div');
+  styleEl(top, { display: 'flex', alignItems: 'center', gap: '10px' });
+
+  if (listing.imageUrl) {
     const img = el('img');
     styleEl(img, {
-      width: '36px',
-      height: '36px',
+      width: '40px',
+      height: '40px',
       borderRadius: '8px',
       objectFit: 'cover',
       flex: '0 0 auto',
@@ -204,22 +265,23 @@ function buildRow(listing: AnalyzedListing): HTMLElement {
     });
     img.loading = 'lazy';
     img.referrerPolicy = 'no-referrer';
-    img.src = listing.image;
-    wrapper.appendChild(img);
+    img.src = listing.imageUrl;
+    top.appendChild(img);
   }
 
   const info = el('div');
   styleEl(info, { flex: '1 1 auto', minWidth: '0' });
-
-  const title = el('div', {
-    fontSize: '13px',
-    fontWeight: '600',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  }, listing.title);
-
-  const currency = listing.currency ?? 'USD';
+  const titleEl = el(
+    'div',
+    {
+      fontSize: '13px',
+      fontWeight: '600',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+    },
+    listing.title,
+  );
   const priceLine = el(
     'div',
     {
@@ -227,52 +289,81 @@ function buildRow(listing: AnalyzedListing): HTMLElement {
       color: '#475569',
       marginTop: '2px',
     },
-    formatMoney(listing.price, currency),
+    formatMoney(listing.price, listing.currency ?? 'USD'),
   );
-
-  const comps = listing.comps;
-  const compsLine = el('div', {
-    fontSize: '10px',
-    color: '#94a3b8',
-    marginTop: '2px',
-  }, `Median ${formatMoney(comps.median, currency)} · ${comps.sampleSize} comps`);
-
-  info.appendChild(title);
+  info.appendChild(titleEl);
   info.appendChild(priceLine);
-  info.appendChild(compsLine);
+  top.appendChild(info);
 
-  const right = el('div');
-  styleEl(right, {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'flex-end',
-    gap: '4px',
-    flex: '0 0 auto',
-  });
+  const pill = el(
+    'span',
+    {
+      display: 'inline-block',
+      padding: '3px 9px',
+      borderRadius: '999px',
+      fontSize: '10px',
+      fontWeight: '700',
+      letterSpacing: '0.04em',
+      textTransform: 'uppercase',
+      color: '#ffffff',
+      background: RECOMMENDATION_COLORS[aiEvaluation.recommendation],
+      flex: '0 0 auto',
+    },
+    RECOMMENDATION_LABELS[aiEvaluation.recommendation],
+  );
+  top.appendChild(pill);
 
-  const score = el('div', {
-    fontSize: '14px',
-    fontWeight: '700',
-    color: '#0f172a',
-  }, `${listing.score}/100`);
+  wrapper.appendChild(top);
 
-  const pill = el('span', {
-    display: 'inline-block',
-    padding: '2px 8px',
-    borderRadius: '999px',
-    fontSize: '10px',
-    fontWeight: '700',
-    letterSpacing: '0.04em',
-    textTransform: 'uppercase',
-    color: '#ffffff',
-    background: COLORS[listing.verdict],
-  }, listing.verdict);
+  // Summary
+  const summary = el(
+    'div',
+    {
+      fontSize: '12px',
+      color: '#334155',
+      lineHeight: '1.45',
+    },
+    aiEvaluation.summary,
+  );
+  wrapper.appendChild(summary);
 
-  right.appendChild(score);
-  right.appendChild(pill);
+  // Positives + concerns
+  if (aiEvaluation.positives.length > 0) {
+    wrapper.appendChild(buildBullets(aiEvaluation.positives, '#15803d'));
+  }
+  if (aiEvaluation.concerns.length > 0) {
+    wrapper.appendChild(buildBullets(aiEvaluation.concerns, '#b91c1c'));
+  }
 
-  wrapper.appendChild(info);
-  wrapper.appendChild(right);
+  // Estimated value
+  if (aiEvaluation.estimatedValue) {
+    const ev = aiEvaluation.estimatedValue;
+    const evLine = el(
+      'div',
+      {
+        fontSize: '11px',
+        color: '#475569',
+      },
+      `AI estimated value: ${formatMoney(ev.min, ev.currency)} – ${formatMoney(ev.max, ev.currency)}`,
+    );
+    wrapper.appendChild(evLine);
+  }
+
+  // Local market footer
+  if (localMarketContext.typicalPrice) {
+    const t = localMarketContext.typicalPrice;
+    const ctx = el(
+      'div',
+      {
+        fontSize: '10px',
+        color: '#94a3b8',
+      },
+      `Local p50 ${formatMoney(t.p50, localMarketContext.currency)} · ${localMarketContext.observationCount} observations`,
+    );
+    wrapper.appendChild(ctx);
+  }
+
+  wrapper.appendChild(buildConfidenceBar(aiEvaluation.confidence));
 
   return wrapper as HTMLElement;
 }
@@ -349,22 +440,20 @@ export function mountOverlay(): OverlayHandle {
   return {
     showLoading(query, count) {
       clearBody();
-      setSubheader(`Scoring ${count} listing${count === 1 ? '' : 's'} for "${query}"`);
+      setSubheader(`Evaluating ${count} listing${count === 1 ? '' : 's'} for "${query}"`);
       body.appendChild(spinner());
     },
     showResults(response) {
       clearBody();
       const n = response.results.length;
       if (n > 0) {
-        setSubheader(
-          `${n} listing${n === 1 ? '' : 's'} scored vs comparable prices per product title`,
-        );
+        setSubheader(`${n} AI evaluation${n === 1 ? '' : 's'} sorted by recommendation`);
       } else {
-        setSubheader('No scored listings — weak titles or missing market comps');
+        setSubheader('No evaluated listings — weak titles or no market observations');
       }
 
       if (response.results.length === 0) {
-        body.appendChild(buildEmpty('No scored listings. Try scrolling or refining the search.'));
+        body.appendChild(buildEmpty('No evaluated listings. Try scrolling or refining the search.'));
         return;
       }
 

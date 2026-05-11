@@ -1,7 +1,9 @@
+import type { MarketObservation } from '../../../types.js';
 import type { MarketDataProvider, MarketDataQuery } from '../types.js';
 
-// MVP fallback: synthetic comparable bands keyed off product TITLE keywords so bulk scoring
-// is not always against one global median. Replace with real providers when available.
+// MVP fallback: synthetic comparable bands keyed off product TITLE keywords so the AI evaluator
+// has *some* market context before real Israeli observations are stored in Mongo. Returns
+// observations tagged source='static-seed' with the current timestamp.
 const DEFAULT_PHONE_BAND = [
   1700, 1750, 1780, 1800, 1820, 1850, 1880, 1900, 1920, 1950, 1980, 2000, 2050, 2100, 2200,
 ];
@@ -38,8 +40,16 @@ function bandUsd(nameRaw: string): number[] {
 
 export const staticProvider: MarketDataProvider = {
   id: 'static',
-  async fetchComparablePrices(query: MarketDataQuery): Promise<number[]> {
-    const usd = bandUsd(query.name);
-    return scaleForCurrency(usd, query.currency);
+  async fetchObservations(query: MarketDataQuery): Promise<MarketObservation[]> {
+    const prices = scaleForCurrency(bandUsd(query.name), query.currency);
+    const now = new Date();
+    const currency = query.currency.trim().toUpperCase() || 'USD';
+    return prices.map((price) => ({
+      productName: query.name,
+      observedPrice: price,
+      currency,
+      source: 'static-seed',
+      timestamp: now,
+    }));
   },
 };

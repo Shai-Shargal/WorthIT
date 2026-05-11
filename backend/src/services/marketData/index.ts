@@ -1,3 +1,4 @@
+import type { MarketObservation } from '../../types.js';
 import { staticProvider } from './providers/static.js';
 import type { MarketDataProvider, MarketDataQuery } from './types.js';
 
@@ -15,9 +16,9 @@ function resolveProvider(): MarketDataProvider {
   return provider;
 }
 
-export async function getMarketData(query: MarketDataQuery): Promise<number[]> {
+export async function getSeedObservations(query: MarketDataQuery): Promise<MarketObservation[]> {
   const provider = resolveProvider();
-  return provider.fetchComparablePrices(query);
+  return provider.fetchObservations(query);
 }
 
 export type { MarketDataProvider, MarketDataQuery } from './types.js';

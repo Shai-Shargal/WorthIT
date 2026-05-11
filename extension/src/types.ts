@@ -1,23 +1,6 @@
-export type Verdict = 'Good' | 'Fair' | 'Bad';
+export type Recommendation = 'worth_it' | 'maybe' | 'avoid';
 export type ConditionLabel = 'excellent' | 'good' | 'fair' | 'poor';
-
-export interface ScoreBreakdown {
-  priceScore: number;
-  conditionScore: number;
-}
-
-export interface ConditionSummary {
-  label: ConditionLabel;
-  signals: string[];
-}
-
-export interface MarketSummary {
-  median: number;
-  average: number;
-  min: number;
-  max: number;
-  sampleSize: number;
-}
+export type ListingSource = 'facebook' | 'yad2' | 'manual';
 
 export interface ExtractedListing {
   title: string;
@@ -28,29 +11,81 @@ export interface ExtractedListing {
   image?: string;
 }
 
-export interface AnalyzedListing {
-  id: string;
+export interface ListingSnapshot {
   title: string;
   price: number;
-  source: 'facebook' | 'yad2';
-  currency?: string;
+  currency: string;
+  description?: string;
+  imageUrl?: string;
   url?: string;
-  image?: string;
+  source?: ListingSource;
+  observedAt: string;
+}
+
+export interface MarketObservation {
+  productName: string;
+  observedPrice: number;
+  currency: string;
+  source: string;
+  condition?: string;
   location?: string;
-  extractedAt: string;
-  score: number;
-  verdict: Verdict;
-  breakdown: ScoreBreakdown;
-  condition: ConditionSummary;
-  /** Market stats for this listing’s own title (per-product compare). */
-  comps: MarketSummary;
+  timestamp: string;
+}
+
+export interface PriceRange {
+  min: number;
+  max: number;
+}
+
+export interface TypicalPriceBand {
+  p25: number;
+  p50: number;
+  p75: number;
+}
+
+export interface LocalMarketContext {
+  query: string;
+  currency: string;
+  observationCount: number;
+  priceRange?: PriceRange;
+  typicalPrice?: TypicalPriceBand;
+  recentObservations: MarketObservation[];
+  notes: string[];
+}
+
+export interface HistoricalContext {
+  query: string;
+  totalObservations: number;
+  oldestTimestamp?: string;
+  newestTimestamp?: string;
+  observations: MarketObservation[];
+}
+
+export interface EstimatedValueRange {
+  min: number;
+  max: number;
+  currency: string;
+}
+
+export interface AiEvaluation {
+  summary: string;
+  positives: string[];
+  concerns: string[];
+  recommendation: Recommendation;
+  confidence: number;
+  estimatedValue?: EstimatedValueRange;
+}
+
+export interface AnalyzeResponse {
+  listing: ListingSnapshot;
+  localMarketContext: LocalMarketContext;
+  historicalContext: HistoricalContext;
+  aiEvaluation: AiEvaluation;
 }
 
 export interface AnalyzeBulkResponse {
   query: string;
-  /** Legacy aggregate field; extension flow uses per-row `comps` instead. */
-  market: MarketSummary | null;
-  results: AnalyzedListing[];
+  results: AnalyzeResponse[];
 }
 
 export type WorthitMessage =

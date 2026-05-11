@@ -1,4 +1,4 @@
-import type { ConditionSummary, MarketStats, ScoreBreakdown, Verdict } from '../types.js';
+import type { AiEvaluation, ListingSnapshot, LocalMarketContext } from '../types.js';
 
 export type ListingSource = 'facebook' | 'yad2';
 
@@ -15,10 +15,7 @@ export interface Listing {
 }
 
 export interface AnalyzedListing extends Listing {
-  score: number;
-  verdict: Verdict;
-  breakdown: ScoreBreakdown;
-  condition: ConditionSummary;
-  /** Comparable market stats for THIS listing title (provider-specific sample). */
-  comps: MarketStats;
+  listing: ListingSnapshot;
+  localMarketContext: LocalMarketContext;
+  aiEvaluation: AiEvaluation;
 }
