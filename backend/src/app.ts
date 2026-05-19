@@ -1,9 +1,8 @@
 import express, { type Application, type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
-import { analyzeRouter } from './routes/analyze.js';
-import { analyzeBulkRouter } from './routes/analyzeBulk.js';
-import { searchRouter } from './routes/search.js';
-import { mongoStatus } from './db/mongoose.js';
+import { ANALYZE_PRODUCT_PATH } from '../../shared/constants/index.js';
+import { analyzeProductRouter } from './analysis/analyzeProduct.route.js';
+import { mongoStatus } from './database/mongoose.js';
 
 export function createApp(): Application {
   const app = express();
@@ -15,9 +14,7 @@ export function createApp(): Application {
     res.json({ status: 'ok', db: mongoStatus() });
   });
 
-  app.use('/analyze', analyzeRouter);
-  app.use('/analyze-bulk', analyzeBulkRouter);
-  app.use('/search', searchRouter);
+  app.use(ANALYZE_PRODUCT_PATH, analyzeProductRouter);
 
   app.use((req, res) => {
     res.status(404).json({ error: 'Not Found', path: req.path });

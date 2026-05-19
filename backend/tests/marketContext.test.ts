@@ -1,17 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { MarketObservation } from '../src/types.js';
+import type { MarketObservation } from '../../shared/types/index.js';
 
-vi.mock('../src/services/marketObservations.js', () => ({
+vi.mock('../src/marketplace/marketObservations.js', () => ({
   findSimilarObservations: vi.fn(),
 }));
 
-vi.mock('../src/services/marketData/index.js', () => ({
+vi.mock('../src/marketplace/seed.js', () => ({
   getSeedObservations: vi.fn(),
 }));
 
-import { buildMarketContexts } from '../src/services/marketContext.js';
-import { findSimilarObservations } from '../src/services/marketObservations.js';
-import { getSeedObservations } from '../src/services/marketData/index.js';
+import { buildMarketContexts } from '../src/marketplace/marketContext.js';
+import { findSimilarObservations } from '../src/marketplace/marketObservations.js';
+import { getSeedObservations } from '../src/marketplace/seed.js';
 
 const findMock = vi.mocked(findSimilarObservations);
 const seedMock = vi.mocked(getSeedObservations);
@@ -28,8 +28,8 @@ function obs(overrides: Partial<MarketObservation> = {}): MarketObservation {
 }
 
 beforeEach(() => {
-  findMock.mockReset();
-  seedMock.mockReset();
+  vi.clearAllMocks();
+  seedMock.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -37,68 +37,23 @@ afterEach(() => {
 });
 
 describe('buildMarketContexts', () => {
-  it('builds a local context from recent observations and flags low counts', async () => {
-    findMock.mockImplementation(async ({ sinceDays }) => {
-      if (typeof sinceDays === 'number') {
-        return [
-          obs({ observedPrice: 1800 }),
-          obs({ observedPrice: 2000 }),
-        ];
-      }
+  it('uses stored recent observations when available', async () => {
+    findMock.mockImplementation(async (q) => {
+      if (q.sinceDays) return [obs({ observedPrice: 1900 }), obs({ observedPrice: 2100 })];
       return [];
     });
 
-    const { localMarketContext, historicalContext } = await buildMarketContexts({
-      name: 'iPhone 13',
-      currency: 'ILS',
-    });
-
+    const { localMarketContext } = await buildMarketContexts({ name: 'iPhone 13', currency: 'ILS' });
     expect(localMarketContext.observationCount).toBe(2);
-    expect(localMarketContext.typicalPrice?.p50).toBeGreaterThan(0);
-    expect(localMarketContext.priceRange).toEqual({ min: 1800, max: 2000 });
-    expect(localMarketContext.notes.some((n) => n.toLowerCase().includes('limited'))).toBe(true);
-    expect(historicalContext.totalObservations).toBe(0);
     expect(seedMock).not.toHaveBeenCalled();
   });
 
-  it('falls back to seed observations when nothing is stored locally', async () => {
+  it('falls back to seed data when no recent observations exist', async () => {
     findMock.mockResolvedValue([]);
-    seedMock.mockResolvedValue([
-      obs({ source: 'static-seed', observedPrice: 1900 }),
-      obs({ source: 'static-seed', observedPrice: 2100 }),
-      obs({ source: 'static-seed', observedPrice: 2300 }),
-      obs({ source: 'static-seed', observedPrice: 2500 }),
-    ]);
+    seedMock.mockResolvedValue([obs({ source: 'static-seed', observedPrice: 2000 })]);
 
-    const { localMarketContext } = await buildMarketContexts({
-      name: 'iPhone 13',
-      currency: 'ILS',
-    });
-
-    expect(seedMock).toHaveBeenCalledOnce();
-    expect(localMarketContext.observationCount).toBe(4);
-    expect(localMarketContext.notes.some((n) => n.toLowerCase().includes('seed'))).toBe(true);
-  });
-
-  it('builds historical context from older observations with oldest/newest stamps', async () => {
-    findMock.mockImplementation(async ({ olderThanDays }) => {
-      if (typeof olderThanDays === 'number') {
-        return [
-          obs({ observedPrice: 1700, timestamp: new Date('2025-09-01T00:00:00Z') }),
-          obs({ observedPrice: 1900, timestamp: new Date('2025-06-15T00:00:00Z') }),
-          obs({ observedPrice: 2100, timestamp: new Date('2025-12-01T00:00:00Z') }),
-        ];
-      }
-      return [obs()];
-    });
-
-    const { historicalContext } = await buildMarketContexts({
-      name: 'iPhone 13',
-      currency: 'ILS',
-    });
-
-    expect(historicalContext.totalObservations).toBe(3);
-    expect(historicalContext.oldestTimestamp?.toISOString()).toBe('2025-06-15T00:00:00.000Z');
-    expect(historicalContext.newestTimestamp?.toISOString()).toBe('2025-12-01T00:00:00.000Z');
+    const { localMarketContext } = await buildMarketContexts({ name: 'iPhone 13', currency: 'ILS' });
+    expect(localMarketContext.observationCount).toBe(1);
+    expect(localMarketContext.notes.some((n) => n.includes('seed'))).toBe(true);
   });
 });

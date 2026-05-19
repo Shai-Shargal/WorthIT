@@ -10,7 +10,10 @@
     "isolatedModules": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "types": ["chrome", "node", "vite/client"]
+    "types": ["chrome", "node", "vite/client"],
+    "paths": {
+      "@shared/*": ["../shared/*"]
+    }
   },
-  "include": ["src", "manifest.config.ts", "vite.config.ts"]
+  "include": ["src/**/*", "../shared/**/*", "manifest.config.ts", "vite.config.ts"]
 }

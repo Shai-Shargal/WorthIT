@@ -1,30 +1,38 @@
 import esbuild from 'esbuild';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { defineConfig, type Plugin } from 'vite';
 import { crx } from '@crxjs/vite-plugin';
 import manifest from './manifest.config';
 
-const root = process.cwd();
+const extensionRoot = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(extensionRoot, '..');
 
-function bundleScoreRuntime(): Plugin {
+function bundleAnalyzeRuntime(): Plugin {
   return {
-    name: 'worthit-bundle-score-runtime',
+    name: 'worthit-bundle-analyze-runtime',
     async closeBundle() {
       await esbuild.build({
-        entryPoints: [path.join(root, 'src/score-runtime.ts')],
-        absWorkingDir: root,
+        entryPoints: [path.join(extensionRoot, 'src/content/analyze-runtime.ts')],
+        absWorkingDir: repoRoot,
         bundle: true,
         format: 'esm',
         platform: 'browser',
         target: 'es2022',
-        outfile: path.join(root, 'dist/assets/worthit-main.js'),
+        outfile: path.join(extensionRoot, 'dist/assets/worthit-main.js'),
       });
     },
   };
 }
 
 export default defineConfig({
-  plugins: [crx({ manifest }), bundleScoreRuntime()],
+  root: extensionRoot,
+  resolve: {
+    alias: {
+      '@shared': path.join(repoRoot, 'shared'),
+    },
+  },
+  plugins: [crx({ manifest }), bundleAnalyzeRuntime()],
   build: {
     outDir: 'dist',
     emptyOutDir: true,

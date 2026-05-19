@@ -2,12 +2,12 @@ import { defineManifest } from '@crxjs/vite-plugin';
 
 export default defineManifest({
   manifest_version: 3,
-  name: 'WorthIT Marketplace Scorer',
-  description: 'Score Facebook Marketplace listings against market data, in-place.',
-  version: '0.1.0',
+  name: 'WorthIT',
+  description: 'Analyze whether a second-hand marketplace listing is worth buying.',
+  version: '0.2.0',
   action: {
     default_popup: 'src/popup/popup.html',
-    default_title: 'WorthIT - Score this page',
+    default_title: 'WorthIT — Analyze Product',
   },
   background: {
     service_worker: 'src/background.ts',
@@ -20,8 +20,7 @@ export default defineManifest({
         'https://facebook.com/marketplace/*',
         'https://web.facebook.com/marketplace/*',
       ],
-      // Plain public/ script (no CRX loader) so messaging works as soon as the script runs.
-      js: ['src/worthit-bridge.js'],
+      js: ['src/content/worthit-bridge.js'],
       run_at: 'document_idle',
     },
   ],

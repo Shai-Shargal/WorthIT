@@ -1,6 +1,6 @@
 # WorthIT
 
-AI-assisted second-hand deal checker focused on browser-assisted sourcing: extract listings from Marketplace pages via the extension, compare prices to market statistics, and get per-listing score and verdict.
+AI-assisted Chrome extension that helps evaluate second-hand marketplace listings. The MVP analyzes **one product at a time**: extract listing data from Facebook Marketplace, compare to local market context, and show a deterministic verdict with AI reasoning.
 
 ## Quickstart
 
@@ -8,23 +8,31 @@ Terminal 1 — backend (default port **4000**):
 
 ```bash
 cd backend
-cp .env.example .env   # optional
+cp .env.example .env   # optional: OPENAI_API_KEY, MONGO_URI
 npm install
 npm run dev
 ```
 
-Terminal 2 (optional) — Chrome extension:
+Terminal 2 — Chrome extension:
 
 ```bash
 cd extension
 npm install
-npm run build   # or `npm run dev` for watch mode
+npm run build
 ```
 
-Then in Chrome go to `chrome://extensions`, enable Developer mode, click **Load unpacked**, and select `extension/dist/`. With the backend running, navigate to a Facebook Marketplace search page and click the WorthIT action to see scored listings.
+Load unpacked from `extension/dist/` in `chrome://extensions`, open a Marketplace listing, and click **Analyze Product**.
 
 ## Docs
 
-- [Project setup](docs/project-setup.md)
-- [Analyze bulk endpoint](docs/features/analyze-bulk.md)
-- [Chrome extension](extension/README.md)
+- [MVP architecture & API](docs/mvp.md)
+
+## Project layout
+
+```
+WorthIT/
+├── backend/src/     # Express API
+├── extension/src/   # Chrome MV3 client
+├── shared/          # Shared types & constants (no business logic)
+└── docs/
+```

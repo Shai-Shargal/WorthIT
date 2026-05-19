@@ -1,6 +1,6 @@
-import { getApiBase } from '../api';
+import { getApiBase } from '../services/api.js';
 
-const button = document.getElementById('score') as HTMLButtonElement | null;
+const button = document.getElementById('analyze') as HTMLButtonElement | null;
 const status = document.getElementById('status') as HTMLParagraphElement | null;
 const apiBaseLabel = document.getElementById('api-base') as HTMLElement | null;
 
@@ -46,7 +46,7 @@ async function init(): Promise<void> {
 
   if (!onMarketplace) {
     button.disabled = true;
-    setStatus('Open a Facebook Marketplace search page to score listings.');
+    setStatus('Open a Facebook Marketplace listing to analyze.');
     return;
   }
 
@@ -55,17 +55,16 @@ async function init(): Promise<void> {
   button.addEventListener('click', async () => {
     if (!tab?.id) return;
     button.disabled = true;
-    setStatus('Working in the page…');
+    setStatus('Analyzing in the page…');
     try {
       await waitForContentScript(tab.id);
-      await chrome.tabs.sendMessage(tab.id, { type: 'WORTHIT_SCORE' });
+      await chrome.tabs.sendMessage(tab.id, { type: 'WORTHIT_ANALYZE' });
       window.close();
     } catch (err) {
       const raw = err instanceof Error ? err.message : 'Failed to message the page';
       const hint =
-        'Receiving end does not exist' === raw ||
         raw.includes('Receiving end')
-          ? ' Reload this Marketplace tab (or reinstall the extension) so the WorthIT bridge script loads.'
+          ? ' Reload this Marketplace tab (or reinstall the extension) so the WorthIT bridge loads.'
           : '';
       setStatus(`${raw}.${hint}`, 'error');
       button.disabled = false;
