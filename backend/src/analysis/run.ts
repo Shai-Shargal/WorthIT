@@ -3,6 +3,7 @@ import { analyzeCondition } from '../ai/condition.js';
 import { generateNarrative } from '../ai/narrative.js';
 import { getCachedAnalysis, listingFingerprint, setCachedAnalysis } from '../cache/analysisCache.js';
 import { buildMarketContexts } from '../marketplace/marketContext.js';
+import { recordObservations } from '../marketplace/marketObservations.js';
 import { buildAnalysisId, saveAnalysis } from './analysisRepository.js';
 import { computeVerdict } from './verdict.js';
 
@@ -64,5 +65,14 @@ export async function runProductAnalysis(product: ProductInput): Promise<Analyze
 
   setCachedAnalysis(cacheKey, response);
   void saveAnalysis(response.analysisId, response);
+  void recordObservations([
+    {
+      productName: listing.title,
+      observedPrice: listing.price,
+      currency: listing.currency,
+      source: listing.source ?? 'facebook',
+      timestamp: listing.observedAt,
+    },
+  ]);
   return response;
 }
