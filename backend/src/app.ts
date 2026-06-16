@@ -1,7 +1,5 @@
 import express, { type Application, type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
-import { ANALYZE_PRODUCT_PATH } from '../../shared/constants/index.js';
-import { analyzeProductRouter } from './analysis/analyzeProduct.route.js';
 import { analysisRouter } from './analysis/analysis.route.js';
 import { authRouter } from './auth/auth.route.js';
 import { mongoStatus } from './database/mongoose.js';
@@ -20,8 +18,6 @@ export function createApp(): Application {
   app.use('/analysis', analysisRouter);
   app.use('/user', userRouter);
 
-  app.use(ANALYZE_PRODUCT_PATH, analyzeProductRouter);
-
   app.use((req, res) => {
     res.status(404).json({ error: 'Not Found', path: req.path });
   });
@@ -29,7 +25,10 @@ export function createApp(): Application {
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     const message = err instanceof Error ? err.message : 'Internal Server Error';
     const statusFromErr = (err as { status?: number })?.status;
-    const status = typeof statusFromErr === 'number' && statusFromErr >= 400 && statusFromErr < 600 ? statusFromErr : 500;
+    const status =
+      typeof statusFromErr === 'number' && statusFromErr >= 400 && statusFromErr < 600
+        ? statusFromErr
+        : 500;
     if (status >= 500) {
       console.error('[worthit-backend] unhandled error:', err);
     }
