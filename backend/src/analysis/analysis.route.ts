@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { findAnalysisById } from './analysisRepository.js';
 import { runProductAnalysis } from './run.js';
 
 export const analysisRouter = Router();
@@ -33,6 +34,14 @@ analysisRouter.post('/analyze', async (req, res, next) => {
   }
 });
 
-analysisRouter.get('/:id', (_req, res) => {
-  res.status(501).json({ error: 'Not yet implemented' });
+analysisRouter.get('/:id', async (req, res, next) => {
+  try {
+    const result = await findAnalysisById(req.params.id);
+    if (!result) {
+      return res.status(404).json({ error: 'Analysis not found' });
+    }
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
 });

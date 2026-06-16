@@ -45,4 +45,11 @@ describe('app startup', () => {
       .send({ title: 'iPhone 13', currency: 'ILS' });
     expect(res.status).toBe(400);
   });
+
+  it('GET /analysis/:id returns 404 for unknown id', async () => {
+    const app = createApp();
+    const res = await request(app).get('/analysis/00000000-0000-0000-0000-000000000000');
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('Analysis not found');
+  });
 });
