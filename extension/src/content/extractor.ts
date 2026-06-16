@@ -90,7 +90,7 @@ export function extractActiveListing(): ProductInput | null {
       document.body;
 
     const title =
-      document.querySelector('h1')?.textContent?.trim() ??
+      (main as Element).querySelector('h1')?.textContent?.trim() ??
       pickTitle(
         getInnerText(main)
           .split('\n')
