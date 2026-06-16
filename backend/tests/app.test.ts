@@ -10,10 +10,11 @@ describe('app startup', () => {
     expect(res.body.status).toBe('ok');
   });
 
-  it('POST /auth/google returns 501 (stub)', async () => {
+  it('POST /auth/google returns 400 when googleToken is missing', async () => {
     const app = createApp();
-    const res = await request(app).post('/auth/google').send({ googleToken: 'x' });
-    expect(res.status).toBe(501);
+    const res = await request(app).post('/auth/google').send({});
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
   });
 
   it('GET /analysis/some-id returns 404 or 501 (stub)', async () => {
