@@ -3,6 +3,7 @@ import { analyzeCondition } from '../ai/condition.js';
 import { generateNarrative } from '../ai/narrative.js';
 import { getCachedAnalysis, listingFingerprint, setCachedAnalysis } from '../cache/analysisCache.js';
 import { buildMarketContexts } from '../marketplace/marketContext.js';
+import { buildAnalysisId, saveAnalysis } from './analysisRepository.js';
 import { computeVerdict } from './verdict.js';
 
 function normalizeCurrency(raw: string): string {
@@ -53,6 +54,7 @@ export async function runProductAnalysis(product: ProductInput): Promise<Analyze
   });
 
   const response: AnalyzeProductResponse = {
+    analysisId: buildAnalysisId(),
     listing,
     localMarketContext,
     historicalContext,
@@ -61,5 +63,6 @@ export async function runProductAnalysis(product: ProductInput): Promise<Analyze
   };
 
   setCachedAnalysis(cacheKey, response);
+  void saveAnalysis(response.analysisId, response);
   return response;
 }

@@ -28,6 +28,7 @@ export interface AiReasoning {
 }
 
 export interface AnalyzeProductResponse {
+  analysisId: string;
   listing: ListingSnapshot;
   localMarketContext: LocalMarketContext;
   historicalContext: HistoricalContext;
