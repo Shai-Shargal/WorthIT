@@ -30,6 +30,7 @@ function buildLocalContext(
   query: MarketContextQuery,
   observations: MarketObservation[],
   notes: string[],
+  dataQuality: 'real' | 'seed' | 'insufficient',
 ): LocalMarketContext {
   const prices = observations
     .map((obs) => obs.observedPrice)
@@ -49,6 +50,7 @@ function buildLocalContext(
     query: query.name,
     currency: query.currency,
     observationCount: observations.length,
+    dataQuality,
     priceRange: distribution
       ? { min: round(distribution.min), max: round(distribution.max) }
       : undefined,
@@ -113,6 +115,7 @@ export async function buildMarketContexts(query: MarketContextQuery): Promise<Ma
   ]);
 
   let recent = recentStored;
+  let usedSeed = false;
 
   if (recent.length === 0) {
     const seed = await getSeedObservations({ name: normalized.name, currency }).catch((err) => {
@@ -121,13 +124,19 @@ export async function buildMarketContexts(query: MarketContextQuery): Promise<Ma
     });
     if (seed.length > 0) {
       recent = seed;
+      usedSeed = true;
       notes.push(
         'No live Israeli-market observations stored yet; falling back to synthetic seed data.',
       );
     }
   }
 
-  const localMarketContext = buildLocalContext(normalized, recent, notes);
+  const dataQuality: 'real' | 'seed' | 'insufficient' =
+    usedSeed ? 'seed' :
+    recentStored.length < 5 ? 'insufficient' :
+    'real';
+
+  const localMarketContext = buildLocalContext(normalized, recent, notes, dataQuality);
   const historicalContext = buildHistoricalContext(normalized, olderStored);
 
   return { localMarketContext, historicalContext };

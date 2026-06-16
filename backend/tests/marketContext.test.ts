@@ -57,3 +57,30 @@ describe('buildMarketContexts', () => {
     expect(localMarketContext.notes.some((n) => n.includes('seed'))).toBe(true);
   });
 });
+
+describe('buildMarketContexts — dataQuality', () => {
+  it('sets dataQuality to seed when falling back to seed data', async () => {
+    findMock.mockResolvedValue([]);
+    seedMock.mockResolvedValue([obs({ source: 'static-seed' })]);
+    const { localMarketContext } = await buildMarketContexts({ name: 'iPhone 13', currency: 'ILS' });
+    expect(localMarketContext.dataQuality).toBe('seed');
+  });
+
+  it('sets dataQuality to insufficient when fewer than 5 real observations', async () => {
+    findMock.mockImplementation(async (q) => {
+      if (q.sinceDays) return [obs(), obs(), obs()]; // 3 real
+      return [];
+    });
+    const { localMarketContext } = await buildMarketContexts({ name: 'iPhone 13', currency: 'ILS' });
+    expect(localMarketContext.dataQuality).toBe('insufficient');
+  });
+
+  it('sets dataQuality to real when 5 or more real observations', async () => {
+    findMock.mockImplementation(async (q) => {
+      if (q.sinceDays) return [obs(), obs(), obs(), obs(), obs()]; // 5 real
+      return [];
+    });
+    const { localMarketContext } = await buildMarketContexts({ name: 'iPhone 13', currency: 'ILS' });
+    expect(localMarketContext.dataQuality).toBe('real');
+  });
+});

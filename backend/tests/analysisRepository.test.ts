@@ -15,7 +15,7 @@ function makeResponse(): AnalyzeProductResponse {
   return {
     analysisId: 'test-id-123',
     listing: { title: 'iPhone 13', price: 1500, currency: 'ILS', observedAt: new Date() },
-    localMarketContext: { query: 'iPhone 13', currency: 'ILS', observationCount: 0, recentObservations: [], notes: [] },
+    localMarketContext: { query: 'iPhone 13', currency: 'ILS', observationCount: 0, dataQuality: 'insufficient', recentObservations: [], notes: [] },
     historicalContext: { query: 'iPhone 13', totalObservations: 0, observations: [] },
     verdict: { verdict: 'maybe', worthRating: 3, confidence: 0.1, confidenceLevel: 'low' },
     reasoning: { summary: 'Test', positives: [], concerns: [] },

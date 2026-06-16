@@ -44,6 +44,7 @@ describe('generateNarrative', () => {
         query: 'iPhone 13',
         currency: 'ILS',
         observationCount: 5,
+        dataQuality: 'real',
         typicalPrice: { p25: 1900, p50: 2050, p75: 2200 },
         recentObservations: [],
         notes: [],

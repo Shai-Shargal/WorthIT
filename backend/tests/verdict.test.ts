@@ -17,6 +17,7 @@ function context(overrides: Partial<LocalMarketContext> = {}): LocalMarketContex
     query: 'iPhone 13',
     currency: 'ILS',
     observationCount: 5,
+    dataQuality: 'real',
     priceRange: { min: 1800, max: 2400 },
     typicalPrice: { p25: 1900, p50: 2050, p75: 2200 },
     recentObservations: [],
