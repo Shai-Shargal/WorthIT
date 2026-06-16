@@ -1,7 +1,8 @@
 import { Router } from 'express';
+import { getUsageStats } from './usageTracker.js';
 
 export const userRouter = Router();
 
 userRouter.get('/usage', (_req, res) => {
-  res.status(501).json({ error: 'Not yet implemented' });
+  res.json(getUsageStats());
 });

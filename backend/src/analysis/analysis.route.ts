@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { findAnalysisById } from './analysisRepository.js';
 import { runProductAnalysis } from './run.js';
+import { incrementUsage } from '../usage/usageTracker.js';
 
 export const analysisRouter = Router();
 
@@ -28,6 +29,7 @@ analysisRouter.post('/analyze', async (req, res, next) => {
       return res.status(400).json({ error: message });
     }
     const result = await runProductAnalysis(parsed.data);
+    incrementUsage();
     res.json(result);
   } catch (err) {
     next(err);

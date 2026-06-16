@@ -23,10 +23,14 @@ describe('app startup', () => {
     expect([404, 501]).toContain(res.status);
   });
 
-  it('GET /user/usage returns 501 (stub)', async () => {
+  it('GET /user/usage returns 200 with usage stats', async () => {
     const app = createApp();
     const res = await request(app).get('/user/usage');
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('analysesUsed');
+    expect(res.body).toHaveProperty('monthlyAnalysisLimit');
+    expect(res.body).toHaveProperty('remainingAnalyses');
+    expect(res.body).toHaveProperty('subscriptionPlan');
   });
 
   it('POST /analysis/analyze with valid body returns 200', async () => {
