@@ -17,12 +17,6 @@ describe('app startup', () => {
     expect(res.body).toHaveProperty('error');
   });
 
-  it('GET /analysis/some-id returns 404 or 501 (stub)', async () => {
-    const app = createApp();
-    const res = await request(app).get('/analysis/nonexistent-id');
-    expect([404, 501]).toContain(res.status);
-  });
-
   it('GET /user/usage returns 200 with usage stats', async () => {
     const app = createApp();
     const res = await request(app).get('/user/usage');
@@ -41,6 +35,9 @@ describe('app startup', () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('verdict');
     expect(res.body).toHaveProperty('reasoning');
+    expect(res.body).toHaveProperty('analysisId');
+    expect(typeof res.body.analysisId).toBe('string');
+    expect(res.body.analysisId.length).toBeGreaterThan(0);
   });
 
   it('POST /analysis/analyze with missing price returns 400', async () => {
@@ -51,10 +48,10 @@ describe('app startup', () => {
     expect(res.status).toBe(400);
   });
 
-  it('GET /analysis/:id returns 404 for unknown id', async () => {
+  it('GET /analysis/:id returns 503 when storage unavailable (no Mongo in tests)', async () => {
     const app = createApp();
     const res = await request(app).get('/analysis/00000000-0000-0000-0000-000000000000');
-    expect(res.status).toBe(404);
-    expect(res.body.error).toBe('Analysis not found');
+    expect(res.status).toBe(503);
+    expect(res.body.error).toBe('Storage unavailable');
   });
 });

@@ -29,9 +29,9 @@ describe('analysisRepository', () => {
     expect(id.length).toBeGreaterThan(0);
   });
 
-  it('findAnalysisById returns null when mongo is not connected', async () => {
+  it('findAnalysisById returns unavailable when mongo is not connected', async () => {
     const result = await findAnalysisById('any-id');
-    expect(result).toBeNull();
+    expect(result).toBe('unavailable');
   });
 
   it('saveAnalysis does not throw when mongo is not connected', async () => {
@@ -51,5 +51,7 @@ describe('runProductAnalysis', () => {
     expect(observations[0].productName).toBe('iPhone 13');
     expect(observations[0].observedPrice).toBe(1500);
     expect(observations[0].currency).toBe('ILS');
+    expect(observations[0].source).toBe('unknown');
+    expect(observations[0].timestamp).toBeInstanceOf(Date);
   });
 });

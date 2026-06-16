@@ -17,12 +17,14 @@ export async function saveAnalysis(id: string, result: AnalyzeProductResponse): 
     await AnalysisModel.updateOne(
       { analysisId: id },
       {
-        analysisId: id,
-        listing: result.listing,
-        verdict: result.verdict,
-        reasoning: result.reasoning,
-        localMarketContext: result.localMarketContext,
-        historicalContext: result.historicalContext,
+        $set: {
+          analysisId: id,
+          listing: result.listing,
+          verdict: result.verdict,
+          reasoning: result.reasoning,
+          localMarketContext: result.localMarketContext,
+          historicalContext: result.historicalContext,
+        },
       },
       { upsert: true },
     );
@@ -31,8 +33,8 @@ export async function saveAnalysis(id: string, result: AnalyzeProductResponse): 
   }
 }
 
-export async function findAnalysisById(id: string): Promise<AnalyzeProductResponse | null> {
-  if (!isMongoReady()) return null;
+export async function findAnalysisById(id: string): Promise<AnalyzeProductResponse | null | 'unavailable'> {
+  if (!isMongoReady()) return 'unavailable';
   try {
     const doc = await AnalysisModel.findOne({ analysisId: id }).lean().exec();
     if (!doc) return null;

@@ -39,6 +39,9 @@ analysisRouter.post('/analyze', async (req, res, next) => {
 analysisRouter.get('/:id', async (req, res, next) => {
   try {
     const result = await findAnalysisById(req.params.id);
+    if (result === 'unavailable') {
+      return res.status(503).json({ error: 'Storage unavailable' });
+    }
     if (!result) {
       return res.status(404).json({ error: 'Analysis not found' });
     }

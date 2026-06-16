@@ -21,7 +21,6 @@ export function productToListing(product: ProductInput): ListingSnapshot {
     description: product.description,
     imageUrl: product.image,
     url: product.url,
-    source: 'facebook',
     observedAt: new Date(),
   };
 }
@@ -70,7 +69,7 @@ export async function runProductAnalysis(product: ProductInput): Promise<Analyze
       productName: listing.title,
       observedPrice: listing.price,
       currency: listing.currency,
-      source: listing.source ?? 'facebook',
+      source: listing.source ?? 'unknown',
       timestamp: listing.observedAt,
     },
   ]);
