@@ -2,7 +2,10 @@ import express, { type Application, type NextFunction, type Request, type Respon
 import cors from 'cors';
 import { ANALYZE_PRODUCT_PATH } from '../../shared/constants/index.js';
 import { analyzeProductRouter } from './analysis/analyzeProduct.route.js';
+import { analysisRouter } from './analysis/analysis.route.js';
+import { authRouter } from './auth/auth.route.js';
 import { mongoStatus } from './database/mongoose.js';
+import { userRouter } from './usage/user.route.js';
 
 export function createApp(): Application {
   const app = express();
@@ -13,6 +16,9 @@ export function createApp(): Application {
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok', db: mongoStatus() });
   });
+  app.use('/auth', authRouter);
+  app.use('/analysis', analysisRouter);
+  app.use('/user', userRouter);
 
   app.use(ANALYZE_PRODUCT_PATH, analyzeProductRouter);
 
