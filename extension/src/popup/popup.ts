@@ -34,6 +34,16 @@ function isMarketplaceUrl(url: string | undefined): boolean {
   }
 }
 
+function isItemDetailPage(url: string | undefined): boolean {
+  if (!url) return false;
+  try {
+    const u = new URL(url);
+    return u.hostname.endsWith('facebook.com') && u.pathname.includes('/marketplace/item/');
+  } catch {
+    return false;
+  }
+}
+
 async function init(): Promise<void> {
   if (apiBaseLabel) {
     apiBaseLabel.textContent = await getApiBase();
@@ -46,16 +56,20 @@ async function init(): Promise<void> {
 
   if (!onMarketplace) {
     button.disabled = true;
-    setStatus('Open a Facebook Marketplace listing to analyze.');
+    setStatus('Open a Facebook Marketplace page first.');
     return;
   }
 
-  setStatus('Ready.');
+  if (isItemDetailPage(tab?.url)) {
+    setStatus('Ready. Click Analyze Product.');
+  } else {
+    setStatus('Click Analyze, then pick a listing.');
+  }
 
   button.addEventListener('click', async () => {
     if (!tab?.id) return;
     button.disabled = true;
-    setStatus('Analyzing in the page…');
+    setStatus('Loading…');
     try {
       await waitForContentScript(tab.id);
       await chrome.tabs.sendMessage(tab.id, { type: 'WORTHIT_ANALYZE' });
@@ -64,7 +78,7 @@ async function init(): Promise<void> {
       const raw = err instanceof Error ? err.message : 'Failed to message the page';
       const hint =
         raw.includes('Receiving end')
-          ? ' Reload this Marketplace tab (or reinstall the extension) so the WorthIT bridge loads.'
+          ? ' Reload this Marketplace tab so the WorthIT bridge loads.'
           : '';
       setStatus(`${raw}.${hint}`, 'error');
       button.disabled = false;

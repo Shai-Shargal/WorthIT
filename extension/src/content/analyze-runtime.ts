@@ -1,24 +1,36 @@
 import { analyzeProduct } from '../services/api.js';
 import { extractActiveListing } from './extractor.js';
 import { mountOverlay, type OverlayHandle } from './overlay.js';
+import { enterSelectionMode } from './selection.js';
 
 let activeOverlay: OverlayHandle | null = null;
 
-export async function runAnalyze(): Promise<void> {
-  const overlay = mountOverlay();
-  activeOverlay = overlay;
+function isItemDetailPage(): boolean {
+  return location.pathname.includes('/marketplace/item/');
+}
 
-  const product = extractActiveListing();
-  if (!product) {
-    overlay.showError(
-      'No listing detected on this page. Open a product listing or scroll to a visible card.',
-      () => {
-        void runAnalyze();
-      },
-    );
-    return;
+export async function runAnalyze(): Promise<void> {
+  let product;
+
+  if (isItemDetailPage()) {
+    product = extractActiveListing();
+    if (!product) {
+      const overlay = mountOverlay();
+      activeOverlay = overlay;
+      overlay.showError(
+        'Could not read this listing. Try reloading the page.',
+        () => { void runAnalyze(); },
+      );
+      return;
+    }
+  } else {
+    // Browse page — let user pick which card to analyze
+    product = await enterSelectionMode();
+    if (!product) return; // user pressed Escape
   }
 
+  const overlay = mountOverlay();
+  activeOverlay = overlay;
   overlay.showLoading(product.title);
 
   try {
@@ -28,8 +40,6 @@ export async function runAnalyze(): Promise<void> {
   } catch (err) {
     if (overlay !== activeOverlay) return;
     const message = err instanceof Error ? err.message : 'Unknown error';
-    overlay.showError(message, () => {
-      void runAnalyze();
-    });
+    overlay.showError(message, () => { void runAnalyze(); });
   }
 }

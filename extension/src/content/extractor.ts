@@ -12,7 +12,7 @@ function inferCurrencyFromPriceText(snippet: string): string | null {
   return null;
 }
 
-function fallbackCurrencyFromPage(): string {
+export function fallbackCurrencyFromPage(): string {
   const lang =
     document.documentElement.getAttribute('lang') ??
     (typeof navigator !== 'undefined' ? navigator.language : '') ??
@@ -53,7 +53,7 @@ function findImage(root: Element): string | undefined {
   return img?.src || undefined;
 }
 
-function extractFromAnchor(anchor: HTMLAnchorElement, pageCcy: string): ProductInput | null {
+export function extractFromAnchor(anchor: HTMLAnchorElement, pageCcy: string): ProductInput | null {
   const text = getInnerText(anchor);
   const lines = text
     .split('\n')
