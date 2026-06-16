@@ -18,9 +18,8 @@ export interface NarrativeInput {
   condition?: ConditionResult;
 }
 
-const SYSTEM_PROMPT = `You are WorthIT, an AI analyst for the Israeli second-hand marketplace.
-Your job is to EXPLAIN a deal verdict that has already been computed deterministically.
-You must NOT change the verdict or invent market facts.
+const SYSTEM_PROMPT = `You are a knowledgeable friend helping someone decide if a second-hand deal in Israel is worth buying.
+Your job is to EXPLAIN a verdict that has already been decided — do NOT change it or invent facts.
 
 Return JSON ONLY:
 {
@@ -30,11 +29,13 @@ Return JSON ONLY:
 }
 
 Rules:
-- summary: 1-3 sentences framing the listing for an Israeli buyer.
-- positives/concerns: <= 5 short phrases each.
-- Align your tone with the provided verdict (worth_it / maybe / avoid).
-- Communicate uncertainty when observation count is low.
-- Output JSON only.`;
+- NEVER use these words: deterministic, p50, local band, observation, ILS, confidence score, percentile.
+- summary: 1-2 plain sentences. Say what the price means compared to similar items. Under 40 words.
+- positives: 2-3 short bullet phrases (reasons it's a good deal). Empty array for avoid verdict.
+- concerns: 2-3 short bullet phrases (things to watch out for). Empty array for worth_it verdict.
+- If DATA QUALITY is seed or insufficient: explicitly say in concerns "Limited listings to compare — verify independently."
+- Match tone to verdict: enthusiastic for worth_it, balanced for maybe, direct for avoid.
+- Output JSON only, no commentary.`;
 
 const narrativeSchema = z.object({
   summary: z.string().min(1),
@@ -69,6 +70,7 @@ function buildUserPrompt(input: NarrativeInput): string {
     `DETERMINISTIC VERDICT (do not override): ${verdict.verdict}`,
     `Worth rating: ${verdict.worthRating}/5`,
     `Confidence: ${verdict.confidence.toFixed(2)} (${verdict.confidenceLevel})`,
+    `DATA QUALITY: ${localMarketContext.dataQuality}${localMarketContext.dataQuality !== 'real' ? ' — explicitly note limited data in concerns' : ''}`,
     '',
     'LISTING:',
     `- title: ${listing.title}`,
@@ -88,32 +90,52 @@ function buildUserPrompt(input: NarrativeInput): string {
     .join('\n');
 }
 
+function formatPrice(price: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat('he-IL', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 0,
+    }).format(price);
+  } catch {
+    return `${Math.round(price)} ${currency}`;
+  }
+}
+
 function fallbackNarrative(input: NarrativeInput): AiReasoning {
   const { listing, localMarketContext, verdict } = input;
   const typical = localMarketContext.typicalPrice;
-  const observationCount = localMarketContext.observationCount;
+  const isLowData = localMarketContext.dataQuality !== 'real';
+  const lowDataNote = 'Limited listings to compare — verify independently.';
 
-  const positives: string[] = [];
-  const concerns: string[] = [];
+  const typicalStr = typical ? ` (around ${formatPrice(typical.p50, listing.currency)})` : '';
+  const priceStr = formatPrice(listing.price, listing.currency);
 
   if (verdict.verdict === 'worth_it') {
-    positives.push('Asking price is below the typical local band.');
-  } else if (verdict.verdict === 'avoid') {
-    concerns.push('Asking price is above the typical local band.');
-  } else {
-    positives.push('Asking price is near the typical local band.');
+    return {
+      summary: `At ${priceStr}, this is well below what similar items typically sell for${typicalStr}. Looks like a solid deal.`,
+      positives: ['Price is below the typical market rate'],
+      concerns: isLowData ? [lowDataNote] : [],
+    };
   }
 
-  if (observationCount < 4) {
-    concerns.push('Limited comparable observations — treat with caution.');
+  if (verdict.verdict === 'avoid') {
+    return {
+      summary: `At ${priceStr}, this is above what similar items typically sell for${typicalStr}. You can probably find a better deal.`,
+      positives: [],
+      concerns: [
+        'Above the typical market rate',
+        isLowData ? lowDataNote : 'Check other listings for better pricing',
+      ],
+    };
   }
 
-  const summary =
-    typical && observationCount > 0
-      ? `For "${listing.title}" at ${listing.price} ${listing.currency}, the deterministic verdict is ${verdict.verdict.replace('_', ' ')} (worth ${verdict.worthRating}/5) based on ${observationCount} local observation${observationCount === 1 ? '' : 's'} (p50≈${typical.p50}).`
-      : `For "${listing.title}", the verdict is ${verdict.verdict.replace('_', ' ')} with limited market data.`;
-
-  return { summary, positives, concerns };
+  // maybe
+  return {
+    summary: `At ${priceStr}, this is roughly in line with similar items${typicalStr}. Not a standout deal, but not overpriced either.`,
+    positives: ['Price is near the typical market rate'],
+    concerns: isLowData ? [lowDataNote] : ['Not a standout deal — worth comparing other listings'],
+  };
 }
 
 export async function generateNarrative(input: NarrativeInput): Promise<AiReasoning> {
