@@ -32,8 +32,8 @@ Rules:
 - NEVER use these words: deterministic, p50, local band, observation, ILS, confidence score, percentile.
 - summary: 1-2 plain sentences. Say what the price means compared to similar items. Under 40 words.
 - positives: 2-3 short bullet phrases (reasons it's a good deal). Empty array for avoid verdict.
-- concerns: 2-3 short bullet phrases (things to watch out for). Empty array for worth_it verdict.
-- If DATA QUALITY is seed or insufficient: explicitly say in concerns "Limited listings to compare — verify independently."
+- concerns: 2-3 short bullet phrases (things to watch out for). Empty array for worth_it verdict — UNLESS data quality is seed or insufficient (see below).
+- DATA QUALITY RULE (overrides all others): If DATA QUALITY is seed or insufficient, you MUST include exactly this concern regardless of verdict: "Limited listings to compare — verify independently."
 - Match tone to verdict: enthusiastic for worth_it, balanced for maybe, direct for avoid.
 - Output JSON only, no commentary.`;
 

@@ -25,8 +25,18 @@ export async function runAnalyze(): Promise<void> {
     }
   } else {
     // Browse page — let user pick which card to analyze
-    product = await enterSelectionMode();
-    if (!product) return; // user pressed Escape
+    const selectionResult = await enterSelectionMode();
+    if (selectionResult.kind === 'cancelled') return;
+    if (selectionResult.kind === 'extraction_failed') {
+      const overlay = mountOverlay();
+      activeOverlay = overlay;
+      overlay.showError(
+        'Could not read that listing. Try clicking it directly or pick another one.',
+        () => { void runAnalyze(); },
+      );
+      return;
+    }
+    product = selectionResult.product;
   }
 
   const overlay = mountOverlay();

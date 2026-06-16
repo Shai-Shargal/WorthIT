@@ -4,7 +4,12 @@ import { extractFromAnchor, fallbackCurrencyFromPage } from './extractor.js';
 const OVERLAY_ID = 'worthit-select-overlay';
 const STYLE_ID = 'worthit-select-style';
 
-export function enterSelectionMode(): Promise<ProductInput | null> {
+export type SelectionResult =
+  | { kind: 'picked'; product: ProductInput }
+  | { kind: 'cancelled' }
+  | { kind: 'extraction_failed' };
+
+export function enterSelectionMode(): Promise<SelectionResult> {
   return new Promise((resolve) => {
     // Dim overlay — pointer-events none so cards remain clickable
     const dimEl = document.createElement('div');
@@ -48,13 +53,17 @@ export function enterSelectionMode(): Promise<ProductInput | null> {
       e.stopPropagation();
       cleanup();
       const product = extractFromAnchor(anchor, fallbackCurrencyFromPage());
-      resolve(product);
+      if (product === null) {
+        resolve({ kind: 'extraction_failed' });
+      } else {
+        resolve({ kind: 'picked', product });
+      }
     }
 
     function onKeyDown(e: KeyboardEvent): void {
       if (e.key === 'Escape') {
         cleanup();
-        resolve(null);
+        resolve({ kind: 'cancelled' });
       }
     }
 
