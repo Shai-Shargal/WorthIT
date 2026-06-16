@@ -44,6 +44,13 @@ export function computeVerdict(input: VerdictInput): VerdictResult {
     );
   }
 
+  const qualityCap =
+    localMarketContext.dataQuality === 'seed' ? 0.30 :
+    localMarketContext.dataQuality === 'insufficient' ? 0.50 :
+    0.85;
+
+  confidence = Math.min(confidence, qualityCap);
+
   const worthRating =
     typical && observationCount > 0
       ? worthRatingFromRatio(listing.price / typical.p50)

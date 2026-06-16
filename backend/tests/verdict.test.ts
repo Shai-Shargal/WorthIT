@@ -58,3 +58,31 @@ describe('computeVerdict', () => {
     expect(result.confidenceLevel).toBe('low');
   });
 });
+
+describe('confidence caps by dataQuality', () => {
+  it('caps confidence at 0.30 when dataQuality is seed', () => {
+    const result = computeVerdict({
+      listing: listing(1500),
+      localMarketContext: context({ dataQuality: 'seed', observationCount: 15 }),
+    });
+    expect(result.confidence).toBeLessThanOrEqual(0.30);
+    expect(result.confidenceLevel).toBe('low');
+  });
+
+  it('caps confidence at 0.50 when dataQuality is insufficient', () => {
+    const result = computeVerdict({
+      listing: listing(1500),
+      localMarketContext: context({ dataQuality: 'insufficient', observationCount: 3 }),
+    });
+    expect(result.confidence).toBeLessThanOrEqual(0.50);
+  });
+
+  it('allows up to 0.85 when dataQuality is real', () => {
+    const result = computeVerdict({
+      listing: listing(1500),
+      localMarketContext: context({ dataQuality: 'real', observationCount: 20 }),
+    });
+    expect(result.confidence).toBeLessThanOrEqual(0.85);
+    expect(result.confidence).toBeGreaterThan(0.50);
+  });
+});
