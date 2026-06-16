@@ -219,6 +219,29 @@ function buildConfidenceBar(confidence: number): HTMLDivElement {
   return wrap;
 }
 
+function buildDataQualityBanner(dataQuality: 'real' | 'seed' | 'insufficient'): HTMLDivElement | null {
+  if (dataQuality === 'real') return null;
+
+  const text =
+    dataQuality === 'seed'
+      ? '⚠ Estimated prices — no local sales data yet'
+      : '⚠ Limited data — fewer than 5 local sales found';
+
+  return el(
+    'div',
+    {
+      padding: '6px 10px',
+      background: '#fef9c3',
+      border: '1px solid #fde047',
+      borderRadius: '8px',
+      fontSize: '11px',
+      color: '#854d0e',
+      fontWeight: '500',
+    },
+    text,
+  );
+}
+
 function buildResultCard(item: AnalyzeProductResponse): HTMLElement {
   const { listing, verdict, reasoning, localMarketContext } = item;
 
@@ -453,6 +476,8 @@ export function mountOverlay(): OverlayHandle {
     showResult(response) {
       clearBody();
       setSubheader('Analysis complete');
+      const banner = buildDataQualityBanner(response.localMarketContext.dataQuality);
+      if (banner) body.appendChild(banner);
       body.appendChild(buildResultCard(response));
     },
     showError(message, onRetry) {
