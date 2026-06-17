@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 # PostToolUse hook — fires after a git commit in the WorthIT project.
-# Sends a bilingual Slack summary (Hebrew + English) to #worthit-dev.
-# Requires ONE of:
-#   SLACK_WEBHOOK_URL  — Incoming Webhook URL (recommended, no scopes needed)
-#   SLACK_BOT_TOKEN    — Bot/user token with chat:write scope
+# Sends an English commit summary to #worthit-dev.
+# Requires: SLACK_WEBHOOK_URL env var (set in ~/.claude/settings.json, never in git).
 
 set -euo pipefail
 
@@ -22,7 +20,6 @@ if [ -z "${SLACK_WEBHOOK_URL:-}" ] && [ -z "${SLACK_BOT_TOKEN:-}" ]; then
   exit 0
 fi
 
-SLACK_CHANNEL="${SLACK_CHANNEL:-#worthit-dev}"
 REPO_DIR="/Users/shaishargal/worthIT"
 
 # --- Gather commit data ---
@@ -35,74 +32,71 @@ FILES_LIST=$(git -C "$REPO_DIR" diff --name-status HEAD~1..HEAD 2>/dev/null | he
 
 # Tests changed
 TEST_FILES=$(git -C "$REPO_DIR" diff --name-only HEAD~1..HEAD 2>/dev/null | grep -E '(test|spec)\.' || true)
-TEST_SUMMARY="אין שינויים בטסטים"
+TEST_SUMMARY="No test files changed"
 if [ -n "$TEST_FILES" ]; then
   TEST_COUNT=$(echo "$TEST_FILES" | wc -l | tr -d ' ')
   TEST_NAMES=$(echo "$TEST_FILES" | tr '\n' ', ' | sed 's/, $//')
-  TEST_SUMMARY="${TEST_COUNT} קבצי טסט שונו: ${TEST_NAMES}"
+  TEST_SUMMARY="${TEST_COUNT} test file(s): ${TEST_NAMES}"
 fi
 
-# Hebrew commit type
-COMMIT_TYPE_HE="שינוי"
+# Commit type label
+COMMIT_TYPE="Change"
 case "$MSG" in
-  feat*)    COMMIT_TYPE_HE="פיצ׳ר חדש" ;;
-  fix*)     COMMIT_TYPE_HE="תיקון באג" ;;
-  docs*)    COMMIT_TYPE_HE="עדכון תיעוד בלבד" ;;
-  refactor*) COMMIT_TYPE_HE="ריפקטורינג" ;;
-  test*)    COMMIT_TYPE_HE="עדכון טסטים" ;;
-  chore*)   COMMIT_TYPE_HE="תחזוקה" ;;
+  feat*)     COMMIT_TYPE="New Feature" ;;
+  fix*)      COMMIT_TYPE="Bug Fix" ;;
+  docs*)     COMMIT_TYPE="Docs / Formatting only" ;;
+  refactor*) COMMIT_TYPE="Refactor" ;;
+  test*)     COMMIT_TYPE="Tests" ;;
+  chore*)    COMMIT_TYPE="Chore / Maintenance" ;;
 esac
 
 # Risk detection
-RISKS="אין סיכונים ידועים"
+RISKS="None"
 RISK_FLAGS=()
 if git -C "$REPO_DIR" diff --name-only HEAD~1..HEAD 2>/dev/null | grep -qE 'shared/types'; then
-  RISK_FLAGS+=("שינוי בטיפוסים משותפים — בדוק תאימות עם ה-extension")
+  RISK_FLAGS+=("Shared types changed — verify extension compatibility")
 fi
 if git -C "$REPO_DIR" diff --name-only HEAD~1..HEAD 2>/dev/null | grep -q 'run\.ts'; then
-  RISK_FLAGS+=("run.ts שונה — צינור הניתוח הראשי הושפע")
+  RISK_FLAGS+=("run.ts changed — core analysis pipeline affected")
 fi
 if git -C "$REPO_DIR" diff --name-only HEAD~1..HEAD 2>/dev/null | grep -qE '\.env|env\.example'; then
-  RISK_FLAGS+=("קובץ env שונה — ודא שמשתני הסביבה מוגדרים")
+  RISK_FLAGS+=("env file changed — make sure env vars are set")
 fi
 ONLY_DOCS=$(git -C "$REPO_DIR" diff --name-only HEAD~1..HEAD 2>/dev/null | grep -vE '\.(md|txt|docx|png|jpg)$' || true)
 if [ -z "$ONLY_DOCS" ]; then
-  RISK_FLAGS+=("docs/formatting only — אין השפעה על runtime")
+  RISK_FLAGS+=("Docs/formatting only — no runtime impact")
 fi
 if [ ${#RISK_FLAGS[@]} -gt 0 ]; then
   RISKS=$(printf "• %s\n" "${RISK_FLAGS[@]}")
 fi
 
 # Next step
-NEXT_STEP="המשך לתהליך הפיתוח הבא"
+NEXT_STEP="Continue with the next development task"
 case "$MSG" in
   *tavily*|*aiAnalysis*|*priceGathering*)
-    NEXT_STEP="הוסף TAVILY_API_KEY ל-.env ובדוק עם listing אמיתי" ;;
+    NEXT_STEP="Add TAVILY_API_KEY to .env and test with a real listing" ;;
   feat*)
-    NEXT_STEP="בדוק את הפיצ׳ר החדש end-to-end ב-extension" ;;
+    NEXT_STEP="Test the new feature end-to-end in the extension" ;;
   fix*)
-    NEXT_STEP="ודא שהתיקון פותר את הבעיה ב-production" ;;
+    NEXT_STEP="Verify the fix resolves the issue in production" ;;
   docs*)
-    NEXT_STEP="ממשיך — אין שינויי קוד" ;;
+    NEXT_STEP="No code changes — continue" ;;
 esac
 
-# --- Build Slack blocks payload ---
-# Safe JSON escaping via jq
+# --- Build Slack payload ---
 build_payload() {
   jq -n \
-    --arg channel "$SLACK_CHANNEL" \
     --arg hash "$HASH" \
     --arg msg "$MSG" \
     --arg author "$AUTHOR" \
     --arg date "$DATE" \
-    --arg type_he "$COMMIT_TYPE_HE" \
+    --arg type "$COMMIT_TYPE" \
     --arg files_changed "$FILES_CHANGED" \
     --arg files_list "$FILES_LIST" \
     --arg tests "$TEST_SUMMARY" \
     --arg risks "$RISKS" \
     --arg next "$NEXT_STEP" \
     '{
-      channel: $channel,
       blocks: [
         {
           type: "header",
@@ -112,27 +106,23 @@ build_payload() {
           type: "section",
           fields: [
             { type: "mrkdwn", text: ("*Hash:*\n`" + $hash + "`") },
-            { type: "mrkdwn", text: ("*Message:*\n" + $msg) },
+            { type: "mrkdwn", text: ("*Type:*\n" + $type) },
             { type: "mrkdwn", text: ("*Author:*\n" + $author) },
             { type: "mrkdwn", text: ("*Date:*\n" + $date) }
           ]
         },
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: ("*Message:*\n" + $msg) }
+        },
         { type: "divider" },
         {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: ("🇮🇱 *סיכום בעברית*\n• *מה השתנה:* " + $type_he + " — " + $msg + "\n• *למה זה חשוב:* כל commit מקדם את WorthIT לניתוח עסקאות חכם יותר")
+            text: ("🔧 *Technical Summary*\n• *What changed:* " + $msg + "\n• *Scope:* " + $files_changed)
           }
         },
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: ("🇺🇸 *Technical Summary*\n• *What changed:* " + $msg + "\n• *Implementation notes:* " + $files_changed)
-          }
-        },
-        { type: "divider" },
         {
           type: "section",
           text: {
@@ -159,27 +149,25 @@ PAYLOAD=$(build_payload)
 
 # --- Send to Slack ---
 if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
-  # Incoming Webhook — no scopes needed, simplest approach
   HTTP_STATUS=$(curl -s -o /tmp/slack-response.txt -w "%{http_code}" \
     -X POST "$SLACK_WEBHOOK_URL" \
     -H "Content-Type: application/json" \
     --data "$PAYLOAD")
   if [ "$HTTP_STATUS" = "200" ]; then
-    echo "[slack-commit-summary] ✅ Posted to ${SLACK_CHANNEL} for commit ${HASH}" >&2
+    echo "[slack-commit-summary] ✅ Posted to #worthit-dev for commit ${HASH}" >&2
   else
-    echo "[slack-commit-summary] ❌ Webhook HTTP ${HTTP_STATUS} for commit ${HASH}: $(cat /tmp/slack-response.txt)" >&2
+    echo "[slack-commit-summary] ❌ Webhook HTTP ${HTTP_STATUS}: $(cat /tmp/slack-response.txt)" >&2
   fi
 else
-  # Bot/user token fallback
   RESPONSE=$(curl -s -X POST "https://slack.com/api/chat.postMessage" \
     -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
     -H "Content-Type: application/json; charset=utf-8" \
     --data "$PAYLOAD")
   OK=$(echo "$RESPONSE" | jq -r '.ok // "false"')
   if [ "$OK" = "true" ]; then
-    echo "[slack-commit-summary] ✅ Posted to ${SLACK_CHANNEL} for commit ${HASH}" >&2
+    echo "[slack-commit-summary] ✅ Posted to #worthit-dev for commit ${HASH}" >&2
   else
     ERROR=$(echo "$RESPONSE" | jq -r '.error // "unknown"')
-    echo "[slack-commit-summary] ❌ Slack error: ${ERROR} (commit ${HASH})" >&2
+    echo "[slack-commit-summary] ❌ Slack error: ${ERROR}" >&2
   fi
 fi
