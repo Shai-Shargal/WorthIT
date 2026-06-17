@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { AiReasoning, MarketObservation, VerdictResult } from '../../../shared/types/index.js';
 import type { ListingSnapshot } from '../../../shared/types/index.js';
 import type { ConditionResult } from './condition.js';
-import { getOpenAiClient, getOpenAiModel } from './client.js';
+import { getOpenAiClient, getOpenAiModel, useVision } from './client.js';
 import type { DataSource } from '../marketplace/priceGathering.js';
 
 export interface AiAnalysisInput {
@@ -18,6 +18,10 @@ export interface AiAnalysisResult {
 }
 
 const SYSTEM_PROMPT = `You are a deal analyst for the Israeli second-hand marketplace. Decide if a listing is worth buying.
+
+You have access to the seller's description and optionally the product photo. Use ALL available information:
+- The seller's description reveals condition, what's included, missing parts, or red flags
+- The photo can confirm or contradict the seller's claims about condition
 
 Return JSON ONLY in this exact schema:
 {
@@ -38,6 +42,7 @@ Rules:
 - positives: 2-3 short bullet reasons it is a good deal. Empty array [] if verdict is "avoid".
 - concerns: 2-3 short bullet reasons to be careful. Empty array [] if verdict is "worth_it" and data is from real DB observations.
 - If data came from web search only (sources includes tavily but not db), always add "Limited listings to compare — verify independently" to concerns.
+- If the photo shows visible damage or the description mentions missing parts, reflect that in concerns and lower the rating.
 - NEVER use these words: p50, percentile, observation, ILS, deterministic, confidence score.
 - Output JSON only, no commentary.`;
 
@@ -90,7 +95,7 @@ function buildUserPrompt(input: AiAnalysisInput): string {
     `- asking price: ${listing.price} ${listing.currency}`,
     `- description: ${listing.description ?? '(none)'}`,
     '',
-    `CONDITION: ${conditionDetail} (score: ${condition.conditionScore.toFixed(2)})`,
+    `CONDITION (from text analysis): ${conditionDetail} (score: ${condition.conditionScore.toFixed(2)})`,
     '',
     `MARKET DATA (sources: ${sourceStr}, ${recentObservations.length} price points):`,
     formatObservations(recentObservations),
@@ -103,6 +108,9 @@ export async function runAiAnalysis(input: AiAnalysisInput): Promise<AiAnalysisR
   const openai = getOpenAiClient();
   if (!openai) return FALLBACK_RESULT;
 
+  const userText = buildUserPrompt(input);
+  const withVision = useVision(input.listing.imageUrl);
+
   try {
     const completion = await openai.chat.completions.create({
       model: getOpenAiModel(),
@@ -110,7 +118,15 @@ export async function runAiAnalysis(input: AiAnalysisInput): Promise<AiAnalysisR
       temperature: 0.2,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: buildUserPrompt(input) },
+        withVision
+          ? {
+              role: 'user',
+              content: [
+                { type: 'text', text: userText },
+                { type: 'image_url', image_url: { url: input.listing.imageUrl as string } },
+              ],
+            }
+          : { role: 'user', content: userText },
       ],
     });
 

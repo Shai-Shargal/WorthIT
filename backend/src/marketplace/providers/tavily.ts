@@ -30,9 +30,18 @@ interface TavilyResponse {
   answer?: string;
 }
 
+function filterRelevantPrices(prices: number[], listingPrice?: number): number[] {
+  if (prices.length === 0) return [];
+  if (!listingPrice) return prices;
+  // Discard prices more than 20x or less than 1/20 of the listing price
+  // This removes car/real-estate noise when searching for small items
+  return prices.filter((p) => p >= listingPrice / 20 && p <= listingPrice * 20);
+}
+
 export async function tavilySearch(query: {
   name: string;
   currency: string;
+  listingPrice?: number;
 }): Promise<MarketObservation[]> {
   const apiKey = process.env.TAVILY_API_KEY;
   if (!apiKey) return [];
@@ -74,7 +83,9 @@ export async function tavilySearch(query: {
       }
 
       for (const text of texts) {
-        for (const price of extractPrices(text)) {
+        const raw = extractPrices(text);
+        const filtered = filterRelevantPrices(raw, query.listingPrice);
+        for (const price of filtered) {
           observations.push({
             productName: query.name,
             observedPrice: price,

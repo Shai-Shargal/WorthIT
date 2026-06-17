@@ -89,8 +89,15 @@ export function extractActiveListing(): ProductInput | null {
       document.querySelector('div[data-pagelet]') ??
       document.body;
 
+    // og:title is always the actual product name on Facebook Marketplace item pages
+    const ogTitle = document
+      .querySelector('meta[property="og:title"]')
+      ?.getAttribute('content')
+      ?.trim();
+
     const title =
-      (main as Element).querySelector('h1')?.textContent?.trim() ??
+      ogTitle ||
+      (main as Element).querySelector('h1')?.textContent?.trim() ||
       pickTitle(
         getInnerText(main)
           .split('\n')
@@ -107,10 +114,18 @@ export function extractActiveListing(): ProductInput | null {
     const currency = inferCurrencyFromPriceText(priceText ?? '') ?? pageCcy;
     const image = findImage(main);
 
+    // og:description holds the seller's written description on item pages
+    const description =
+      document
+        .querySelector('meta[property="og:description"]')
+        ?.getAttribute('content')
+        ?.trim() || undefined;
+
     return {
       title,
       price,
       currency,
+      description,
       url: location.href,
       image,
     };

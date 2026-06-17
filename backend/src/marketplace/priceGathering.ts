@@ -88,6 +88,7 @@ function buildHistoricalContext(
 export async function gatherPrices(query: {
   name: string;
   currency: string;
+  listingPrice?: number;
 }): Promise<PriceGatheringResult> {
   const currency = query.currency.trim().toUpperCase();
   const notes: string[] = [];
@@ -114,7 +115,7 @@ export async function gatherPrices(query: {
   let tavilyCount = 0;
 
   if (recentDb.length < TAVILY_THRESHOLD) {
-    const tavilyObs = await tavilySearch({ name: query.name, currency }).catch((err) => {
+    const tavilyObs = await tavilySearch({ name: query.name, currency, listingPrice: query.listingPrice }).catch((err) => {
       console.error('[priceGathering] tavily failed:', err instanceof Error ? err.message : err);
       return [] as MarketObservation[];
     });
