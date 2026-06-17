@@ -115,7 +115,14 @@ export async function runAiAnalysis(input: AiAnalysisInput): Promise<AiAnalysisR
     });
 
     const raw = completion.choices[0]?.message?.content ?? '';
-    const parsed = analysisSchema.safeParse(JSON.parse(raw));
+    let jsonObj: unknown;
+    try {
+      jsonObj = JSON.parse(raw);
+    } catch {
+      console.error('[aiAnalysis] malformed JSON: not valid JSON');
+      return FALLBACK_RESULT;
+    }
+    const parsed = analysisSchema.safeParse(jsonObj);
 
     if (!parsed.success) {
       console.error('[aiAnalysis] malformed JSON:', parsed.error.message);
