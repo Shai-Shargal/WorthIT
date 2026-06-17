@@ -89,10 +89,12 @@ export function extractActiveListing(): ProductInput | null {
       document.querySelector('div[data-pagelet]') ??
       document.body;
 
-    // og:title is always the actual product name on Facebook Marketplace item pages
+    // og:title is set server-side by Facebook — strip " | Facebook" suffix if present
     const ogTitle = document
       .querySelector('meta[property="og:title"]')
       ?.getAttribute('content')
+      ?.trim()
+      ?.replace(/\s*[|–—-]\s*Facebook\s*$/i, '')
       ?.trim();
 
     const title =
@@ -107,11 +109,23 @@ export function extractActiveListing(): ProductInput | null {
 
     if (!title || isLikelyFbUiTitle(title)) return null;
 
+    // Try og:price:amount first (Facebook sometimes sets this), then scan DOM
+    const ogPrice = document
+      .querySelector('meta[property="og:price:amount"]')
+      ?.getAttribute('content');
+    const ogCurrency = document
+      .querySelector('meta[property="og:price:currency"]')
+      ?.getAttribute('content');
+
     const priceText = findPriceText(main);
-    const price = parsePrice(priceText);
+    const price = parsePrice(ogPrice) ?? parsePrice(priceText);
     if (!price) return null;
 
-    const currency = inferCurrencyFromPriceText(priceText ?? '') ?? pageCcy;
+    const currency =
+      ogCurrency?.trim().toUpperCase() ||
+      inferCurrencyFromPriceText(priceText ?? '') ||
+      pageCcy;
+
     const image = findImage(main);
 
     // og:description holds the seller's written description on item pages
