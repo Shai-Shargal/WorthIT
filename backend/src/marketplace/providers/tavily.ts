@@ -36,6 +36,7 @@ export async function tavilySearch(query: {
 }): Promise<MarketObservation[]> {
   const apiKey = process.env.TAVILY_API_KEY;
   if (!apiKey) return [];
+  if (query.currency.toUpperCase() !== 'ILS') return [];
 
   const queries = [
     `"${query.name}" יד שנייה מחיר`,

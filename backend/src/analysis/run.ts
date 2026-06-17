@@ -1,4 +1,4 @@
-import type { AnalyzeProductResponse, ListingSnapshot, ProductInput } from '../../../shared/types/index.js';
+import type { AnalyzeProductResponse, ListingSnapshot, ProductInput, EstimatedValueRange } from '../../../shared/types/index.js';
 import { analyzeCondition } from '../ai/condition.js';
 import { runAiAnalysis } from '../ai/aiAnalysis.js';
 import { getCachedAnalysis, listingFingerprint, setCachedAnalysis } from '../cache/analysisCache.js';
@@ -43,6 +43,15 @@ export async function runProductAnalysis(product: ProductInput): Promise<Analyze
     recentObservations: priceData.recentObservations,
     sources: priceData.sources,
   });
+
+  const priceRange = priceData.localMarketContext.priceRange;
+  if (priceRange && priceData.recentObservations.length >= 3) {
+    verdict.estimatedValue = {
+      min: priceRange.min,
+      max: priceRange.max,
+      currency: listing.currency,
+    };
+  }
 
   const response: AnalyzeProductResponse = {
     analysisId: buildAnalysisId(),
