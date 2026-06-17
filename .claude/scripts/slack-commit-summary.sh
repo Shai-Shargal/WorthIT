@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # PostToolUse hook — fires after a git commit in the WorthIT project.
 # Sends a bilingual Slack summary (Hebrew + English) to #worthit-dev.
-# Requires: SLACK_BOT_TOKEN env var (set in ~/.claude/settings.json, never in git).
+# Requires ONE of:
+#   SLACK_WEBHOOK_URL  — Incoming Webhook URL (recommended, no scopes needed)
+#   SLACK_BOT_TOKEN    — Bot/user token with chat:write scope
 
 set -euo pipefail
 
@@ -14,9 +16,9 @@ if ! echo "$COMMAND" | grep -qE '^git commit'; then
   exit 0
 fi
 
-# --- Validate token ---
-if [ -z "${SLACK_BOT_TOKEN:-}" ]; then
-  echo "[slack-commit-summary] SLACK_BOT_TOKEN not set — skipping" >&2
+# --- Validate credentials ---
+if [ -z "${SLACK_WEBHOOK_URL:-}" ] && [ -z "${SLACK_BOT_TOKEN:-}" ]; then
+  echo "[slack-commit-summary] No SLACK_WEBHOOK_URL or SLACK_BOT_TOKEN set — skipping" >&2
   exit 0
 fi
 
@@ -155,16 +157,29 @@ build_payload() {
 
 PAYLOAD=$(build_payload)
 
-# --- Send to Slack Web API ---
-RESPONSE=$(curl -s -X POST "https://slack.com/api/chat.postMessage" \
-  -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
-  -H "Content-Type: application/json; charset=utf-8" \
-  --data "$PAYLOAD")
-
-OK=$(echo "$RESPONSE" | jq -r '.ok // "false"')
-if [ "$OK" = "true" ]; then
-  echo "[slack-commit-summary] ✅ Posted to ${SLACK_CHANNEL} for commit ${HASH}" >&2
+# --- Send to Slack ---
+if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
+  # Incoming Webhook — no scopes needed, simplest approach
+  HTTP_STATUS=$(curl -s -o /tmp/slack-response.txt -w "%{http_code}" \
+    -X POST "$SLACK_WEBHOOK_URL" \
+    -H "Content-Type: application/json" \
+    --data "$PAYLOAD")
+  if [ "$HTTP_STATUS" = "200" ]; then
+    echo "[slack-commit-summary] ✅ Posted to ${SLACK_CHANNEL} for commit ${HASH}" >&2
+  else
+    echo "[slack-commit-summary] ❌ Webhook HTTP ${HTTP_STATUS} for commit ${HASH}: $(cat /tmp/slack-response.txt)" >&2
+  fi
 else
-  ERROR=$(echo "$RESPONSE" | jq -r '.error // "unknown"')
-  echo "[slack-commit-summary] ❌ Slack error: ${ERROR} (commit ${HASH})" >&2
+  # Bot/user token fallback
+  RESPONSE=$(curl -s -X POST "https://slack.com/api/chat.postMessage" \
+    -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
+    -H "Content-Type: application/json; charset=utf-8" \
+    --data "$PAYLOAD")
+  OK=$(echo "$RESPONSE" | jq -r '.ok // "false"')
+  if [ "$OK" = "true" ]; then
+    echo "[slack-commit-summary] ✅ Posted to ${SLACK_CHANNEL} for commit ${HASH}" >&2
+  else
+    ERROR=$(echo "$RESPONSE" | jq -r '.error // "unknown"')
+    echo "[slack-commit-summary] ❌ Slack error: ${ERROR} (commit ${HASH})" >&2
+  fi
 fi
