@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/shaishargal/worthIT/.claude/scripts/slack-commit-summary.sh",
+            "timeout": 30,
+            "statusMessage": "Sending Slack commit summary...",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}
