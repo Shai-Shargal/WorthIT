@@ -2,6 +2,7 @@ import type { MarketObservation } from '../../../../shared/types/index.js';
 import { recordObservations } from '../marketObservations.js';
 
 const TAVILY_API_URL = 'https://api.tavily.com/search';
+const MAX_OBSERVATIONS_PER_SEARCH = 15;
 
 const PRICE_REGEX =
   /(?:₪|ש["״]ח|שח|ILS|NIS)\s*([0-9][0-9,]*(?:\.[0-9]+)?)|([0-9][0-9,]*(?:\.[0-9]+)?)\s*(?:₪|ש["״]ח|שח|ILS|NIS)/gi;
@@ -20,6 +21,25 @@ function extractPrices(text: string): number[] {
   return prices;
 }
 
+function filterRelevantPrices(prices: number[], listingPrice?: number): number[] {
+  if (prices.length === 0) return [];
+  if (!listingPrice) return prices;
+  // Keep only prices within 5x of the listing price
+  // e.g. PS5 at ₪1,400 → min ₪280, max ₪7,000 (filters accessories/games at ₪89-₪199)
+  return prices.filter((p) => p >= listingPrice / 5 && p <= listingPrice * 5);
+}
+
+function deduplicatePrices(prices: number[]): number[] {
+  // Round to nearest 50 to bin near-identical prices, then deduplicate
+  const seen = new Set<number>();
+  return prices.filter((p) => {
+    const bin = Math.round(p / 50) * 50;
+    if (seen.has(bin)) return false;
+    seen.add(bin);
+    return true;
+  });
+}
+
 interface TavilyResult {
   content?: string;
   snippet?: string;
@@ -28,14 +48,6 @@ interface TavilyResult {
 interface TavilyResponse {
   results?: TavilyResult[];
   answer?: string;
-}
-
-function filterRelevantPrices(prices: number[], listingPrice?: number): number[] {
-  if (prices.length === 0) return [];
-  if (!listingPrice) return prices;
-  // Discard prices more than 20x or less than 1/20 of the listing price
-  // This removes car/real-estate noise when searching for small items
-  return prices.filter((p) => p >= listingPrice / 20 && p <= listingPrice * 20);
 }
 
 export async function tavilySearch(query: {
@@ -52,7 +64,7 @@ export async function tavilySearch(query: {
     `"${query.name}" second hand price Israel`,
   ];
 
-  const observations: MarketObservation[] = [];
+  const allPrices: number[] = [];
   const now = new Date();
 
   for (const q of queries) {
@@ -83,22 +95,25 @@ export async function tavilySearch(query: {
       }
 
       for (const text of texts) {
-        const raw = extractPrices(text);
-        const filtered = filterRelevantPrices(raw, query.listingPrice);
-        for (const price of filtered) {
-          observations.push({
-            productName: query.name,
-            observedPrice: price,
-            currency: query.currency,
-            source: 'tavily',
-            timestamp: now,
-          });
-        }
+        allPrices.push(...extractPrices(text));
       }
     } catch (err) {
       console.error('[tavily] search failed:', err instanceof Error ? err.message : err);
     }
   }
+
+  // Filter irrelevant prices, deduplicate, and cap total saved
+  const filtered = filterRelevantPrices(allPrices, query.listingPrice);
+  const deduped = deduplicatePrices(filtered);
+  const capped = deduped.slice(0, MAX_OBSERVATIONS_PER_SEARCH);
+
+  const observations: MarketObservation[] = capped.map((price) => ({
+    productName: query.name,
+    observedPrice: price,
+    currency: query.currency,
+    source: 'tavily',
+    timestamp: now,
+  }));
 
   if (observations.length > 0) {
     void recordObservations(observations);
