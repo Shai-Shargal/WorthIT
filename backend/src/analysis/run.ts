@@ -1,11 +1,10 @@
 import type { AnalyzeProductResponse, ListingSnapshot, ProductInput } from '../../../shared/types/index.js';
 import { analyzeCondition } from '../ai/condition.js';
-import { generateNarrative } from '../ai/narrative.js';
+import { runAiAnalysis } from '../ai/aiAnalysis.js';
 import { getCachedAnalysis, listingFingerprint, setCachedAnalysis } from '../cache/analysisCache.js';
-import { buildMarketContexts } from '../marketplace/marketContext.js';
+import { gatherPrices } from '../marketplace/priceGathering.js';
 import { recordObservations } from '../marketplace/marketObservations.js';
 import { buildAnalysisId, saveAnalysis } from './analysisRepository.js';
-import { computeVerdict } from './verdict.js';
 
 function normalizeCurrency(raw: string): string {
   const upper = raw.trim().toUpperCase();
@@ -21,6 +20,7 @@ export function productToListing(product: ProductInput): ListingSnapshot {
     description: product.description,
     imageUrl: product.image,
     url: product.url,
+    source: 'facebook',
     observedAt: new Date(),
   };
 }
@@ -32,46 +32,36 @@ export async function runProductAnalysis(product: ProductInput): Promise<Analyze
   const cached = getCachedAnalysis(cacheKey);
   if (cached) return cached;
 
-  const { localMarketContext, historicalContext } = await buildMarketContexts({
-    name: listing.title,
-    currency: listing.currency,
-  });
+  const [priceData, condition] = await Promise.all([
+    gatherPrices({ name: listing.title, currency: listing.currency }),
+    analyzeCondition({ title: listing.title, description: listing.description, imageUrl: listing.imageUrl }),
+  ]);
 
-  const condition = await analyzeCondition({
-    title: listing.title,
-    description: listing.description,
-    imageUrl: listing.imageUrl,
-  });
-
-  const verdict = computeVerdict({ listing, localMarketContext });
-
-  const reasoning = await generateNarrative({
+  const { verdict, reasoning } = await runAiAnalysis({
     listing,
-    localMarketContext,
-    historicalContext,
-    verdict,
     condition,
+    recentObservations: priceData.recentObservations,
+    sources: priceData.sources,
   });
 
   const response: AnalyzeProductResponse = {
     analysisId: buildAnalysisId(),
     listing,
-    localMarketContext,
-    historicalContext,
+    localMarketContext: priceData.localMarketContext,
+    historicalContext: priceData.historicalContext,
     verdict,
     reasoning,
   };
 
   setCachedAnalysis(cacheKey, response);
   void saveAnalysis(response.analysisId, response);
-  void recordObservations([
-    {
-      productName: listing.title,
-      observedPrice: listing.price,
-      currency: listing.currency,
-      source: listing.source ?? 'unknown',
-      timestamp: listing.observedAt,
-    },
-  ]);
+  void recordObservations([{
+    productName: listing.title,
+    observedPrice: listing.price,
+    currency: listing.currency,
+    source: listing.source ?? 'facebook',
+    timestamp: listing.observedAt,
+  }]);
+
   return response;
 }

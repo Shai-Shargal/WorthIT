@@ -51,7 +51,7 @@ describe('runProductAnalysis', () => {
     expect(observations[0].productName).toBe('iPhone 13');
     expect(observations[0].observedPrice).toBe(1500);
     expect(observations[0].currency).toBe('ILS');
-    expect(observations[0].source).toBe('unknown');
+    expect(observations[0].source).toBe('facebook');
     expect(observations[0].timestamp).toBeInstanceOf(Date);
   });
 });
