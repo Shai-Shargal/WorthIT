@@ -1,21 +1,13 @@
 import { Router } from 'express';
-import { z } from 'zod';
 import { findAnalysisById } from './analysisRepository.js';
 import { runProductAnalysis } from './run.js';
 import { incrementUsage } from '../usage/usageTracker.js';
+import { requireAuth } from '../auth/middleware.js';
+import { productSchema } from './productSchema.js';
 
 export const analysisRouter = Router();
 
-const productSchema = z.object({
-  title: z.string().trim().min(1).max(300),
-  price: z.number().finite().positive(),
-  currency: z.string().trim().min(1).max(8),
-  description: z.string().trim().max(5000).optional(),
-  url: z.string().url().optional(),
-  image: z.string().url().optional(),
-});
-
-analysisRouter.post('/analyze', async (req, res, next) => {
+analysisRouter.post('/analyze', requireAuth, async (req, res, next) => {
   try {
     const parsed = productSchema.safeParse(req.body);
     if (!parsed.success) {

@@ -1,5 +1,5 @@
-import mongoose from 'mongoose';
 import { MarketObservationModel } from '../database/models/MarketObservation.js';
+import { isMongoReady } from '../database/mongoose.js';
 import type { MarketObservation } from '../../../shared/types/index.js';
 
 export interface ObservationQuery {
@@ -8,10 +8,6 @@ export interface ObservationQuery {
   sinceDays?: number;
   olderThanDays?: number;
   limit?: number;
-}
-
-function isMongoReady(): boolean {
-  return mongoose.connection.readyState === 1;
 }
 
 function toKeywords(name: string): string[] {

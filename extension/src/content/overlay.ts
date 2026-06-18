@@ -219,7 +219,7 @@ function buildConfidenceBar(confidence: number): HTMLDivElement {
   return wrap;
 }
 
-function buildDataQualityBanner(dataQuality: 'real' | 'seed' | 'insufficient'): HTMLDivElement | null {
+function buildDataQualityBanner(dataQuality: 'real' | 'seed' | 'limited' | 'insufficient'): HTMLDivElement | null {
   if (dataQuality === 'real') return null;
 
   const text =

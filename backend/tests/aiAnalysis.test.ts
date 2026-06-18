@@ -4,6 +4,7 @@ import type { MarketObservation } from '../../shared/types/index.js';
 vi.mock('../src/ai/client.js', () => ({
   getOpenAiClient: vi.fn(),
   getOpenAiModel: vi.fn().mockReturnValue('gpt-4o-mini'),
+  useVision: vi.fn().mockReturnValue(false),
 }));
 
 import { runAiAnalysis } from '../src/ai/aiAnalysis.js';

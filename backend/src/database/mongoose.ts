@@ -3,6 +3,10 @@ import mongoose from 'mongoose';
 let lastError: string | null = null;
 let attempted = false;
 
+export function isMongoReady(): boolean {
+  return mongoose.connection.readyState === 1;
+}
+
 export async function connectMongo(): Promise<void> {
   const mongoUri = process.env.MONGO_URI;
   attempted = true;

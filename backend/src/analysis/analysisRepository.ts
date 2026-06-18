@@ -1,11 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import mongoose from 'mongoose';
 import { AnalysisModel } from '../database/models/Analysis.js';
+import { isMongoReady } from '../database/mongoose.js';
 import type { AnalyzeProductResponse } from '../../../shared/types/index.js';
-
-function isMongoReady(): boolean {
-  return mongoose.connection.readyState === 1;
-}
 
 export function buildAnalysisId(): string {
   return randomUUID();
@@ -48,6 +44,6 @@ export async function findAnalysisById(id: string): Promise<AnalyzeProductRespon
     };
   } catch (err) {
     console.error('[analysisRepository] findById failed:', err instanceof Error ? err.message : err);
-    return null;
+    return 'unavailable';
   }
 }

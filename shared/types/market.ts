@@ -24,7 +24,7 @@ export interface LocalMarketContext {
   query: string;
   currency: string;
   observationCount: number;
-  dataQuality: 'real' | 'seed' | 'insufficient';
+  dataQuality: 'real' | 'seed' | 'limited' | 'insufficient';
   priceRange?: PriceRange;
   typicalPrice?: TypicalPriceBand;
   recentObservations: MarketObservation[];

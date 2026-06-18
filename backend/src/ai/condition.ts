@@ -93,7 +93,14 @@ export async function analyzeCondition(input: ConditionInput): Promise<Condition
     });
 
     const raw = completion.choices[0]?.message?.content ?? '';
-    const parsed = responseSchema.safeParse(JSON.parse(raw));
+    let jsonObj: unknown;
+    try {
+      jsonObj = JSON.parse(raw);
+    } catch {
+      console.error('[condition] malformed JSON: not valid JSON');
+      return NEUTRAL;
+    }
+    const parsed = responseSchema.safeParse(jsonObj);
     if (!parsed.success) return NEUTRAL;
 
     const result: ConditionResult = {

@@ -3,7 +3,7 @@ import type {
   LocalMarketContext,
   MarketObservation,
 } from '../../../shared/types/index.js';
-import { findSimilarObservations } from './marketObservations.js';
+import { findSimilarObservations, recordObservations } from './marketObservations.js';
 import { tavilySearch } from './providers/tavily.js';
 import { describePrices, removeOutliers } from './statistics.js';
 
@@ -28,18 +28,18 @@ function round(n: number): number {
 function buildDataQuality(
   dbCount: number,
   tavilyCount: number,
-): 'real' | 'seed' | 'insufficient' {
+): 'real' | 'seed' | 'limited' | 'insufficient' {
   if (dbCount >= TAVILY_THRESHOLD) return 'real';
   if (dbCount === 0 && tavilyCount === 0) return 'insufficient';
   if (dbCount === 0 && tavilyCount > 0) return 'seed';
-  return 'insufficient';
+  return 'limited';
 }
 
 function buildLocalContext(
   query: string,
   currency: string,
   observations: MarketObservation[],
-  dataQuality: 'real' | 'seed' | 'insufficient',
+  dataQuality: 'real' | 'seed' | 'limited' | 'insufficient',
   notes: string[],
 ): LocalMarketContext {
   const prices = observations
@@ -125,6 +125,7 @@ export async function gatherPrices(query: {
       tavilyCount = tavilyObs.length;
       sources.push('tavily');
       notes.push('Prices sourced from web search — verify independently.');
+      void recordObservations(tavilyObs);
     }
   }
 

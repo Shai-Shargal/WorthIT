@@ -1,5 +1,4 @@
 import type { MarketObservation } from '../../../../shared/types/index.js';
-import { recordObservations } from '../marketObservations.js';
 
 const TAVILY_API_URL = 'https://api.tavily.com/search';
 const MAX_OBSERVATIONS_PER_SEARCH = 15;
@@ -114,10 +113,6 @@ export async function tavilySearch(query: {
     source: 'tavily',
     timestamp: now,
   }));
-
-  if (observations.length > 0) {
-    void recordObservations(observations);
-  }
 
   return observations;
 }

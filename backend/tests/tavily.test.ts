@@ -1,13 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../src/marketplace/marketObservations.js', () => ({
-  recordObservations: vi.fn().mockResolvedValue(0),
-}));
-
 import { tavilySearch } from '../src/marketplace/providers/tavily.js';
-import { recordObservations } from '../src/marketplace/marketObservations.js';
-
-const recordMock = vi.mocked(recordObservations);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -23,7 +16,6 @@ describe('tavilySearch', () => {
     delete process.env.TAVILY_API_KEY;
     const result = await tavilySearch({ name: 'iPhone 13', currency: 'ILS' });
     expect(result).toEqual([]);
-    expect(recordMock).not.toHaveBeenCalled();
   });
 
   it('returns empty array and does not throw when fetch fails', async () => {
@@ -55,7 +47,6 @@ describe('tavilySearch', () => {
     expect(result.every((o) => o.source === 'tavily')).toBe(true);
     expect(result.every((o) => o.productName === 'iPhone 13')).toBe(true);
     expect(result.every((o) => o.observedPrice > 0)).toBe(true);
-    expect(recordMock).toHaveBeenCalledOnce();
   });
 
   it('returns empty array when Tavily returns HTTP error', async () => {

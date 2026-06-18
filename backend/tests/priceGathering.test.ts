@@ -3,6 +3,7 @@ import type { MarketObservation } from '../../shared/types/index.js';
 
 vi.mock('../src/marketplace/marketObservations.js', () => ({
   findSimilarObservations: vi.fn(),
+  recordObservations: vi.fn().mockResolvedValue(0),
 }));
 
 vi.mock('../src/marketplace/providers/tavily.js', () => ({
@@ -68,13 +69,13 @@ describe('gatherPrices', () => {
     expect(result.localMarketContext.dataQuality).toBe('seed');
   });
 
-  it('sets dataQuality to insufficient when DB has < 5 real observations and Tavily is empty', async () => {
+  it('sets dataQuality to limited when DB has < 5 real observations and Tavily is empty', async () => {
     findMock.mockImplementation(async (q) => (q.sinceDays ? [obs(2000), obs(1900)] : []));
     tavilyMock.mockResolvedValue([]);
 
     const result = await gatherPrices({ name: 'iPhone 13', currency: 'ILS' });
 
-    expect(result.localMarketContext.dataQuality).toBe('insufficient');
+    expect(result.localMarketContext.dataQuality).toBe('limited');
   });
 
   it('builds historicalContext from older observations', async () => {

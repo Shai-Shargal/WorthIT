@@ -9,7 +9,16 @@ import { userRouter } from './usage/user.route.js';
 export function createApp(): Application {
   const app = express();
 
-  app.use(cors());
+  const allowedOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map((s) => s.trim())
+    : [];
+
+  app.use(
+    cors({
+      origin: allowedOrigins.length > 0 ? allowedOrigins : false,
+      credentials: true,
+    }),
+  );
   app.use(express.json({ limit: '1mb' }));
 
   app.get('/health', (_req, res) => {

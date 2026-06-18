@@ -1,6 +1,20 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
+import { signToken } from '../src/auth/jwt.js';
+
+const TEST_JWT_SECRET = 'test-secret-for-app-tests';
+
+let authHeader: string;
+
+beforeAll(() => {
+  process.env.JWT_SECRET = TEST_JWT_SECRET;
+  authHeader = `Bearer ${signToken({ userId: 'test-user', email: 'test@test.com' })}`;
+});
+
+afterAll(() => {
+  delete process.env.JWT_SECRET;
+});
 
 describe('app startup', () => {
   it('GET /health returns 200', async () => {
@@ -27,10 +41,19 @@ describe('app startup', () => {
     expect(res.body).toHaveProperty('subscriptionPlan');
   });
 
-  it('POST /analysis/analyze with valid body returns 200', async () => {
+  it('POST /analysis/analyze returns 401 without auth token', async () => {
     const app = createApp();
     const res = await request(app)
       .post('/analysis/analyze')
+      .send({ title: 'iPhone 13', price: 1500, currency: 'ILS' });
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /analysis/analyze with valid body and token returns 200', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post('/analysis/analyze')
+      .set('Authorization', authHeader)
       .send({ title: 'iPhone 13', price: 1500, currency: 'ILS' });
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('verdict');
@@ -44,6 +67,7 @@ describe('app startup', () => {
     const app = createApp();
     const res = await request(app)
       .post('/analysis/analyze')
+      .set('Authorization', authHeader)
       .send({ title: 'iPhone 13', currency: 'ILS' });
     expect(res.status).toBe(400);
   });
