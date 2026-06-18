@@ -111,24 +111,42 @@ export async function runAiAnalysis(input: AiAnalysisInput): Promise<AiAnalysisR
   const userText = buildUserPrompt(input);
   const withVision = useVision(input.listing.imageUrl);
 
+  const makeMessages = (includeImage: boolean) => [
+    { role: 'system' as const, content: SYSTEM_PROMPT },
+    includeImage
+      ? {
+          role: 'user' as const,
+          content: [
+            { type: 'text' as const, text: userText },
+            { type: 'image_url' as const, image_url: { url: input.listing.imageUrl as string } },
+          ],
+        }
+      : { role: 'user' as const, content: userText },
+  ];
+
   try {
-    const completion = await openai.chat.completions.create({
-      model: getOpenAiModel(),
-      response_format: { type: 'json_object' },
-      temperature: 0.2,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        withVision
-          ? {
-              role: 'user',
-              content: [
-                { type: 'text', text: userText },
-                { type: 'image_url', image_url: { url: input.listing.imageUrl as string } },
-              ],
-            }
-          : { role: 'user', content: userText },
-      ],
-    });
+    let completion;
+    try {
+      completion = await openai.chat.completions.create({
+        model: getOpenAiModel(),
+        response_format: { type: 'json_object' },
+        temperature: 0.2,
+        messages: makeMessages(withVision),
+      });
+    } catch (visionErr) {
+      if (withVision) {
+        // Facebook image URLs sometimes expire — retry without the image
+        console.warn('[aiAnalysis] Vision call failed, retrying without image');
+        completion = await openai.chat.completions.create({
+          model: getOpenAiModel(),
+          response_format: { type: 'json_object' },
+          temperature: 0.2,
+          messages: makeMessages(false),
+        });
+      } else {
+        throw visionErr;
+      }
+    }
 
     const raw = completion.choices[0]?.message?.content ?? '';
     let jsonObj: unknown;

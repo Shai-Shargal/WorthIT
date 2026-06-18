@@ -63,7 +63,8 @@ async function init(): Promise<void> {
   if (isItemDetailPage(tab?.url)) {
     setStatus('Ready. Click Analyze Product.');
   } else {
-    setStatus('Click Analyze, then pick a listing.');
+    button.disabled = true;
+    setStatus('Open a specific listing to analyze it.');
   }
 
   button.addEventListener('click', async () => {

@@ -1,7 +1,6 @@
 import { analyzeProduct } from '../services/api.js';
 import { extractActiveListing } from './extractor.js';
 import { mountOverlay, type OverlayHandle } from './overlay.js';
-import { enterSelectionMode } from './selection.js';
 
 let activeOverlay: OverlayHandle | null = null;
 
@@ -10,33 +9,26 @@ function isItemDetailPage(): boolean {
 }
 
 export async function runAnalyze(): Promise<void> {
-  let product;
+  // Analyze only works on item detail pages — browse/search pages collect passively
+  if (!isItemDetailPage()) {
+    const overlay = mountOverlay();
+    activeOverlay = overlay;
+    overlay.showError(
+      'Open a specific listing to analyze it.',
+      () => {},
+    );
+    return;
+  }
 
-  if (isItemDetailPage()) {
-    product = extractActiveListing();
-    if (!product) {
-      const overlay = mountOverlay();
-      activeOverlay = overlay;
-      overlay.showError(
-        'Could not read this listing. Try reloading the page.',
-        () => { void runAnalyze(); },
-      );
-      return;
-    }
-  } else {
-    // Browse page — let user pick which card to analyze
-    const selectionResult = await enterSelectionMode();
-    if (selectionResult.kind === 'cancelled') return;
-    if (selectionResult.kind === 'extraction_failed') {
-      const overlay = mountOverlay();
-      activeOverlay = overlay;
-      overlay.showError(
-        'Could not read that listing. Try clicking it directly or pick another one.',
-        () => { void runAnalyze(); },
-      );
-      return;
-    }
-    product = selectionResult.product;
+  const product = extractActiveListing();
+  if (!product) {
+    const overlay = mountOverlay();
+    activeOverlay = overlay;
+    overlay.showError(
+      'Could not read this listing. Try reloading the page.',
+      () => { void runAnalyze(); },
+    );
+    return;
   }
 
   const overlay = mountOverlay();
