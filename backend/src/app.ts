@@ -2,6 +2,7 @@ import express, { type Application, type NextFunction, type Request, type Respon
 import cors from 'cors';
 import { analysisRouter } from './analysis/analysis.route.js';
 import { authRouter } from './auth/auth.route.js';
+import { marketplaceRouter } from './marketplace/marketplace.route.js';
 import { mongoStatus } from './database/mongoose.js';
 import { userRouter } from './usage/user.route.js';
 
@@ -16,6 +17,7 @@ export function createApp(): Application {
   });
   app.use('/auth', authRouter);
   app.use('/analysis', analysisRouter);
+  app.use('/marketplace', marketplaceRouter);
   app.use('/user', userRouter);
 
   app.use((req, res) => {

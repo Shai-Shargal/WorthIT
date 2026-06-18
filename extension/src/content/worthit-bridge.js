@@ -1,7 +1,15 @@
 (function () {
   'use strict';
 
-  var ENTRY = 'assets/worthit-main.js';
+  var ANALYZE_ENTRY = 'assets/worthit-main.js';
+  var PASSIVE_ENTRY = 'assets/worthit-passive.js';
+
+  // Start passive collection on browse pages (not item detail pages)
+  if (!location.pathname.includes('/marketplace/item/')) {
+    import(chrome.runtime.getURL(PASSIVE_ENTRY)).catch(function (err) {
+      console.warn('[WorthIT] Passive collection failed to load:', err);
+    });
+  }
 
   chrome.runtime.onMessage.addListener(function (msg, _sender, sendResponse) {
     if (msg.type === 'WORTHIT_PING') {
@@ -9,7 +17,7 @@
       return false;
     }
     if (msg.type === 'WORTHIT_ANALYZE') {
-      import(chrome.runtime.getURL(ENTRY))
+      import(chrome.runtime.getURL(ANALYZE_ENTRY))
         .then(function (mod) {
           return mod.runAnalyze();
         })
