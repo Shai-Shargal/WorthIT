@@ -7,22 +7,22 @@ Update your section when you start and when you stop. Keep it short.
 
 ## QA Session
 
-**Last active:** 2026-06-17  
+**Last active:** 2026-06-18  
 **Status:** Idle
 
 **Completed this session:**
-- Full backend review (`/backend/src/**`)
-- Fixed 4 critical issues (crash risk, dead code, open routes, wildcard CORS)
-- Fixed 4 medium issues (SRP violation, duplicated utility, wrong error code, mislabeled data quality)
-- All 34 tests passing
+- MongoDB indexes: TTL (1 year expiry) + compound `{ currency, timestamp, productNameLower }`
+- `specsExtractor.ts` full review — 2 critical bugs, 4 medium bugs fixed
+- 30 new unit tests for specsExtractor (63 total passing)
+- QA doc: `docs/qa/2026-06-18-specsextractor-indexes-qa.md`
 
 **Open QA items (carry forward):**
 - [ ] Auth stub — Google token not verified; replace before real user traffic
 - [ ] Usage counter — in-memory, global, not per-user; resets on restart
 - [ ] No rate limiting on `POST /analysis/analyze`
-- [ ] MongoDB regex search won't scale — needs text index on `productNameLower`
-- [ ] No TTL index on `market_observations` — collection grows unbounded
+- [ ] Drop old `{ productNameLower: 1, timestamp: -1 }` Atlas index (manual)
 - [ ] `productToListing` hardcodes `source: 'facebook'` — blocks Yad2 support
+- [ ] `YEAR_PATTERN` can match prices like `2020 ₪` as year (low severity)
 
 ---
 
