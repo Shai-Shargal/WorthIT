@@ -9,13 +9,15 @@ import { userRouter } from './usage/user.route.js';
 export function createApp(): Application {
   const app = express();
 
+  // Allow all origins by default (Chrome extension uses chrome-extension:// origin).
+  // Lock down with CORS_ORIGIN env var in production.
   const allowedOrigins = process.env.CORS_ORIGIN
     ? process.env.CORS_ORIGIN.split(',').map((s) => s.trim())
-    : [];
+    : null;
 
   app.use(
     cors({
-      origin: allowedOrigins.length > 0 ? allowedOrigins : false,
+      origin: allowedOrigins ?? true,
       credentials: true,
     }),
   );

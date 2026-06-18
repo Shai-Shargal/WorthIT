@@ -2,12 +2,12 @@ import { Router } from 'express';
 import { findAnalysisById } from './analysisRepository.js';
 import { runProductAnalysis } from './run.js';
 import { incrementUsage } from '../usage/usageTracker.js';
-import { requireAuth } from '../auth/middleware.js';
 import { productSchema } from './productSchema.js';
 
 export const analysisRouter = Router();
 
-analysisRouter.post('/analyze', requireAuth, async (req, res, next) => {
+// Auth not required in MVP — extension has no login flow yet.
+analysisRouter.post('/analyze', async (req, res, next) => {
   try {
     const parsed = productSchema.safeParse(req.body);
     if (!parsed.success) {
