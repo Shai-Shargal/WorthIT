@@ -6,6 +6,7 @@ import type {
 import { findSimilarObservations, recordObservations } from './marketObservations.js';
 import { tavilySearch } from './providers/tavily.js';
 import { describePrices, removeOutliers } from './statistics.js';
+import { extractSpecs, buildEnrichedQuery } from '../ai/specsExtractor.js';
 
 const RECENT_WINDOW_DAYS = 90;
 const RECENT_LIMIT = 30;
@@ -89,6 +90,7 @@ export async function gatherPrices(query: {
   name: string;
   currency: string;
   listingPrice?: number;
+  description?: string;
 }): Promise<PriceGatheringResult> {
   const currency = query.currency.trim().toUpperCase();
   const notes: string[] = [];
@@ -115,7 +117,9 @@ export async function gatherPrices(query: {
   let tavilyCount = 0;
 
   if (recentDb.length < TAVILY_THRESHOLD) {
-    const tavilyObs = await tavilySearch({ name: query.name, currency, listingPrice: query.listingPrice }).catch((err) => {
+    const specs = extractSpecs(query.name, query.description);
+    const enrichedName = buildEnrichedQuery(query.name, specs);
+    const tavilyObs = await tavilySearch({ name: enrichedName, currency, listingPrice: query.listingPrice }).catch((err) => {
       console.error('[priceGathering] tavily failed:', err instanceof Error ? err.message : err);
       return [] as MarketObservation[];
     });

@@ -33,7 +33,7 @@ export async function runProductAnalysis(product: ProductInput): Promise<Analyze
   if (cached) return cached;
 
   const [priceData, condition] = await Promise.all([
-    gatherPrices({ name: listing.title, currency: listing.currency, listingPrice: listing.price }),
+    gatherPrices({ name: listing.title, currency: listing.currency, listingPrice: listing.price, description: listing.description }),
     analyzeCondition({ title: listing.title, description: listing.description, imageUrl: listing.imageUrl }),
   ]);
 

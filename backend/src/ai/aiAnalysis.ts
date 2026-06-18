@@ -4,6 +4,7 @@ import type { ListingSnapshot } from '../../../shared/types/index.js';
 import type { ConditionResult } from './condition.js';
 import { getOpenAiClient, getOpenAiModel, useVision } from './client.js';
 import type { DataSource } from '../marketplace/priceGathering.js';
+import { extractSpecs } from './specsExtractor.js';
 
 export interface AiAnalysisInput {
   listing: ListingSnapshot;
@@ -19,9 +20,7 @@ export interface AiAnalysisResult {
 
 const SYSTEM_PROMPT = `You are a deal analyst for the Israeli second-hand marketplace. Decide if a listing is worth buying.
 
-You have access to the seller's description and optionally the product photo. Use ALL available information:
-- The seller's description reveals condition, what's included, missing parts, or red flags
-- The photo can confirm or contradict the seller's claims about condition
+You have access to the seller's description, extracted specs, and optionally the product photo. Use ALL available information.
 
 Return JSON ONLY in this exact schema:
 {
@@ -41,10 +40,29 @@ Rules:
 - Set confidence based on data: low if fewer than 3 price points, medium if 3–9, high if 10+
 - positives: 2-3 short bullet reasons it is a good deal. Empty array [] if verdict is "avoid".
 - concerns: 2-3 short bullet reasons to be careful. Empty array [] if verdict is "worth_it" and data is from real DB observations.
-- If data came from web search only (sources includes tavily but not db), always add "Limited listings to compare — verify independently" to concerns.
-- If the photo shows visible damage or the description mentions missing parts, reflect that in concerns and lower the rating.
-- NEVER use these words: p50, percentile, observation, ILS, deterministic, confidence score.
-- Output JSON only, no commentary.`;
+
+RED FLAGS — if any of the following are detected, add them to concerns and reduce worthRating by 1–2:
+- Missing accessories (no charger, one controller only, no original box)
+- Urgency language ("must sell", "urgent", "חייב למכור")
+- Untested or sold as-is ("לא בדוק", "as-is", "מוכר כפי שהוא")
+- Physical damage mentioned (cracks, scratches, broken)
+- Functional issues hinted ("לא תמיד עולה", intermittent problems)
+- Vague title designed to hide details in description ("כנסו לתיאור")
+
+SPECS — use extracted specs to compare like-for-like:
+- Higher RAM/storage = higher expected market value
+- Newer chip model (M2 > M1, newer i-series) = higher expected value
+- If specs seem mismatched with the asking price, flag it
+
+PRICE COMPARISON — compare asking price to market data considering the specs:
+- A Mac Mini M1 8GB at ₪800 and M2 Pro 32GB at ₪3,000 are not the same product
+- Weight market data points that match the product's specs more heavily
+
+OTHER RULES:
+- If data came from web search only, add "Limited listings to compare — verify independently" to concerns
+- If photo shows visible damage contradicting "like new" claim, flag it
+- NEVER use: p50, percentile, observation, ILS, deterministic, confidence score
+- Output JSON only, no commentary`;
 
 const analysisSchema = z.object({
   verdict: z.enum(['worth_it', 'maybe', 'avoid']),
@@ -89,11 +107,17 @@ function buildUserPrompt(input: AiAnalysisInput): string {
       ? `${condition.conditionLabel} — ${condition.signals.join(', ')}`
       : condition.conditionLabel;
 
+  const specs = extractSpecs(listing.title, listing.description);
+
   return [
     'LISTING:',
     `- title: ${listing.title}`,
     `- asking price: ${listing.price} ${listing.currency}`,
     `- description: ${listing.description ?? '(none)'}`,
+    '',
+    `EXTRACTED SPECS: ${specs.summary}`,
+    specs.redFlags.length > 0 ? `RED FLAGS DETECTED: ${specs.redFlags.join(' | ')}` : null,
+    specs.missingItems.length > 0 ? `MISSING ITEMS: ${specs.missingItems.join(', ')}` : null,
     '',
     `CONDITION (from text analysis): ${conditionDetail} (score: ${condition.conditionScore.toFixed(2)})`,
     '',
@@ -101,7 +125,7 @@ function buildUserPrompt(input: AiAnalysisInput): string {
     formatObservations(recentObservations),
     '',
     'Decide if this listing is worth buying. Return JSON only.',
-  ].join('\n');
+  ].filter((line): line is string => line !== null).join('\n');
 }
 
 export async function runAiAnalysis(input: AiAnalysisInput): Promise<AiAnalysisResult> {
