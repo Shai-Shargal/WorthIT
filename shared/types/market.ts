@@ -3,6 +3,7 @@ export interface MarketObservation {
   observedPrice: number;
   currency: string;
   source: string;
+  description?: string;
   condition?: string;
   location?: string;
   timestamp: Date;

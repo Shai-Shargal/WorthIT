@@ -1,11 +1,46 @@
-import { extractFromAnchor, fallbackCurrencyFromPage } from './extractor.js';
+import { extractFromAnchor, extractActiveListing, fallbackCurrencyFromPage } from './extractor.js';
 import { getApiBase } from '../services/api.js';
 
-// Only run on browse pages, not item detail pages
 if (location.pathname.includes('/marketplace/item/')) {
-  // Nothing to collect on detail pages — runAnalyze handles those
+  // Item detail page — silently save full listing (with description) once it's loaded
+  silentlySaveItemListing();
 } else {
+  // Browse/category page — passively collect all visible listing cards
   startPassiveCollection();
+}
+
+async function silentlySaveItemListing(): Promise<void> {
+  // Wait for Facebook's client-side render to finish
+  await new Promise((resolve) => setTimeout(resolve, 2_000));
+
+  const listing = extractActiveListing();
+  if (!listing) return;
+
+  const description =
+    document
+      .querySelector('meta[property="og:description"]')
+      ?.getAttribute('content')
+      ?.trim() || undefined;
+
+  try {
+    const base = await getApiBase();
+    await fetch(`${base.replace(/\/$/, '')}/marketplace/observe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        observations: [{
+          name: listing.title,
+          price: listing.price,
+          currency: listing.currency,
+          description,
+          url: listing.url,
+        }],
+      }),
+    });
+    console.debug(`[WorthIT] Saved item listing: ${listing.title}`);
+  } catch {
+    // Silent fail
+  }
 }
 
 type ObservationPayload = { name: string; price: number; currency: string; url?: string };

@@ -38,6 +38,7 @@ function docToObservation(doc: unknown): MarketObservation {
     observedPrice: number;
     currency: string;
     source: string;
+    description?: string;
     condition?: string;
     location?: string;
     timestamp: Date;
@@ -47,6 +48,7 @@ function docToObservation(doc: unknown): MarketObservation {
     observedPrice: raw.observedPrice,
     currency: raw.currency,
     source: raw.source,
+    description: raw.description,
     condition: raw.condition,
     location: raw.location,
     timestamp: raw.timestamp instanceof Date ? raw.timestamp : new Date(raw.timestamp),
@@ -62,6 +64,7 @@ export async function recordObservations(observations: MarketObservation[]): Pro
     observedPrice: obs.observedPrice,
     currency: obs.currency.toUpperCase(),
     source: obs.source,
+    description: obs.description,
     condition: obs.condition,
     location: obs.location,
     timestamp: obs.timestamp ?? new Date(),

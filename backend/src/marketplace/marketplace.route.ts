@@ -8,6 +8,7 @@ const observationSchema = z.object({
   name: z.string().trim().min(1).max(300),
   price: z.number().finite().positive(),
   currency: z.string().trim().min(1).max(8),
+  description: z.string().trim().max(5000).optional(),
   url: z.string().url().optional(),
 });
 
@@ -28,6 +29,7 @@ marketplaceRouter.post('/observe', async (req, res, next) => {
       observedPrice: obs.price,
       currency: obs.currency.trim().toUpperCase(),
       source: 'facebook-browse' as const,
+      description: obs.description,
       timestamp: now,
     }));
 

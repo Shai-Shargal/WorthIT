@@ -7,6 +7,7 @@ const marketObservationSchema = new Schema(
     observedPrice: { type: Number, required: true, min: 0 },
     currency: { type: String, required: true, uppercase: true, trim: true, maxlength: 8 },
     source: { type: String, required: true, trim: true },
+    description: { type: String, trim: true, maxlength: 5000 },
     condition: { type: String, trim: true },
     location: { type: String, trim: true },
     timestamp: { type: Date, required: true, default: () => new Date(), index: true },
