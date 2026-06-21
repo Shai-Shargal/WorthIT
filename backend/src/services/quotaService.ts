@@ -1,23 +1,10 @@
 import { UserModel } from '../models/User.js';
 import { UsageLogModel } from '../models/UsageLog.js';
-
-const TIER_LIMITS: Record<string, number> = {
-  free: 15,
-  pro: 100,
-  enterprise: 999999,
-};
+import { TIER_LIMITS, isNewMonth } from '../config/tierLimits.js';
 
 function getCurrentYearMonth(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function isNewMonth(monthStartDate: Date): boolean {
-  const now = new Date();
-  return (
-    now.getFullYear() > monthStartDate.getFullYear() ||
-    now.getMonth() > monthStartDate.getMonth()
-  );
 }
 
 export async function checkQuotaAndIncrement(userId: string): Promise<{
@@ -30,27 +17,35 @@ export async function checkQuotaAndIncrement(userId: string): Promise<{
     return { allowed: false, analysesRemaining: 0, reason: 'User not found' };
   }
 
-  // Check if trial has expired
-  if (user.trialExpiresAt && new Date() > user.trialExpiresAt) {
-    user.trialExpiresAt = undefined;
-  }
-
-  // If trial is active, allow unlimited
+  // Trial active → allow, bypass quota
   if (user.trialExpiresAt && new Date() < user.trialExpiresAt) {
     return { allowed: true, analysesRemaining: TIER_LIMITS[user.tier] ?? 15 };
   }
 
-  // Check if it's a new month — reset counter if so
-  if (user.monthStartDate && isNewMonth(user.monthStartDate)) {
-    user.analysesUsedThisMonth = 0;
-    user.monthStartDate = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    await user.save();
+  const tierLimit = TIER_LIMITS[user.tier] ?? 15;
+  const now = new Date();
+
+  // Reset monthly counter atomically if month has rolled over
+  if (user.monthStartDate && isNewMonth(user.monthStartDate as Date)) {
+    await UserModel.updateOne(
+      { _id: userId },
+      {
+        $set: {
+          analysesUsedThisMonth: 0,
+          monthStartDate: new Date(now.getFullYear(), now.getMonth(), 1),
+        },
+      },
+    );
   }
 
-  const tierLimit = TIER_LIMITS[user.tier] ?? 15;
-  const remaining = tierLimit - user.analysesUsedThisMonth;
+  // Atomic quota check + increment — prevents concurrent over-quota
+  const updated = await UserModel.findOneAndUpdate(
+    { _id: userId, analysesUsedThisMonth: { $lt: tierLimit } },
+    { $inc: { analysesUsedThisMonth: 1 }, $set: { lastAnalysisAt: now } },
+    { new: true },
+  );
 
-  if (remaining <= 0) {
+  if (!updated) {
     return {
       allowed: false,
       analysesRemaining: 0,
@@ -58,31 +53,31 @@ export async function checkQuotaAndIncrement(userId: string): Promise<{
     };
   }
 
-  // Increment usage
-  user.analysesUsedThisMonth += 1;
-  user.lastAnalysisAt = new Date();
-  await user.save();
-
-  // Log the usage
-  const yearMonth = getCurrentYearMonth();
+  // Append-only audit log
   await UsageLogModel.findOneAndUpdate(
-    { userId, yearMonth },
+    { userId, yearMonth: getCurrentYearMonth() },
     { $inc: { analysesUsed: 1 } },
     { upsert: true, new: true },
   );
 
-  return { allowed: true, analysesRemaining: remaining - 1 };
+  return { allowed: true, analysesRemaining: tierLimit - updated.analysesUsedThisMonth };
 }
 
 export async function getAnalysesRemaining(userId: string): Promise<number> {
   const user = await UserModel.findById(userId);
   if (!user) return 0;
 
-  // Reset if new month
-  if (user.monthStartDate && isNewMonth(user.monthStartDate)) {
-    user.analysesUsedThisMonth = 0;
-    user.monthStartDate = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    await user.save();
+  if (user.monthStartDate && isNewMonth(user.monthStartDate as Date)) {
+    await UserModel.updateOne(
+      { _id: userId },
+      {
+        $set: {
+          analysesUsedThisMonth: 0,
+          monthStartDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+        },
+      },
+    );
+    return TIER_LIMITS[user.tier] ?? 15;
   }
 
   const tierLimit = TIER_LIMITS[user.tier] ?? 15;

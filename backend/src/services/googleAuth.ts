@@ -21,23 +21,12 @@ export interface AuthResponse {
   };
 }
 
-const TIER_LIMITS: Record<string, number> = {
-  free: 15,
-  pro: 100,
-  enterprise: 999999,
-};
+import { TIER_LIMITS, isNewMonth } from '../config/tierLimits.js';
 
 function getGoogleClient(): OAuth2Client {
   return new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 }
 
-function isNewMonth(monthStartDate: Date): boolean {
-  const now = new Date();
-  return (
-    now.getFullYear() > monthStartDate.getFullYear() ||
-    now.getMonth() > monthStartDate.getMonth()
-  );
-}
 
 export async function verifyGoogleToken(googleToken: string): Promise<GoogleTokenPayload> {
   try {

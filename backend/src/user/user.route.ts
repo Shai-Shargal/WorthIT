@@ -1,7 +1,7 @@
 import { Router, type Response } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/authMiddleware.js';
-import { getAnalysesRemaining } from '../services/quotaService.js';
 import { UserModel } from '../models/User.js';
+import { TIER_LIMITS } from '../config/tierLimits.js';
 
 export const userRouter = Router();
 
@@ -13,7 +13,8 @@ userRouter.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Respon
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const analysesRemaining = await getAnalysesRemaining(req.userId!);
+    const tierLimit = TIER_LIMITS[user.tier] ?? 15;
+    const analysesRemaining = Math.max(0, tierLimit - user.analysesUsedThisMonth);
 
     res.json({
       id: user._id,

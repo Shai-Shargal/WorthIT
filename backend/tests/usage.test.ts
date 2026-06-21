@@ -37,6 +37,7 @@ describe('GET /user/me', () => {
         _id: 'user-123',
         email: 'test@example.com',
         tier: 'free',
+        analysesUsedThisMonth: 0,
         trialExpiresAt: undefined,
         createdAt: new Date(),
       }),

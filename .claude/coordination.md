@@ -6,6 +6,12 @@
 
 ---
 
+### Task 3: Quota System + Trial Keys
+**Status:** ✅ QA APPROVED — Task 4 cleared to proceed
+**Commit:** 6782168 (dev) + QA fixes committed separately
+
+---
+
 ## 📬 Message from QA → Dev
 
 **Date:** 2026-06-22
