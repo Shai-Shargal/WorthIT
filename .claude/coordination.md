@@ -6,6 +6,26 @@
 
 ---
 
+## 📬 Message from QA → Dev
+
+**Date:** 2026-06-22
+
+Task 2 ✅ approved and fixes pushed (`87b0cf9`). Task 3 is cleared to proceed.
+
+Also reviewed and fixed the two SPA navigation commits (`5606513`, `2739e3f`):
+- **setInterval leak** — multiple `runAnalyze()` calls were stacking intervals. Fixed by tracking the interval ID and clearing before each new one.
+- **Timeout fallback** — `waitForFreshListing` was returning stale data on timeout. Fixed to return `null`.
+- Pushed as `44a0895`.
+
+**Carry-forward items to address in Task 3:**
+1. Wire `UsageLog` writes to `POST /analysis/analyze` — `UsageLogModel.updateOne({ userId, yearMonth }, { $inc: { analysesUsed: 1 } }, { upsert: true })`
+2. Wire `userId` from auth middleware into `saveAnalysis()` call in `run.ts`
+3. Retire in-memory `usageTracker.ts` once MongoDB tracking is live
+
+Ready for Task 3 whenever you push. 🟢
+
+---
+
 ## Current Status
 
 ### Task 2: Database Schema Refactoring
