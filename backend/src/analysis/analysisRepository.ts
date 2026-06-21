@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { AnalysisModel } from '../database/models/Analysis.js';
+import { AnalysisModel, type AnalysisDoc } from '../database/models/Analysis.js';
 import { isMongoReady } from '../database/mongoose.js';
 import type { AnalyzeProductResponse } from '../../../shared/types/index.js';
 
@@ -7,7 +7,12 @@ export function buildAnalysisId(): string {
   return randomUUID();
 }
 
-export async function saveAnalysis(id: string, result: AnalyzeProductResponse): Promise<void> {
+export async function saveAnalysis(
+  id: string,
+  result: AnalyzeProductResponse,
+  userId?: string,
+  productId?: string,
+): Promise<void> {
   if (!isMongoReady()) return;
   try {
     await AnalysisModel.updateOne(
@@ -18,8 +23,12 @@ export async function saveAnalysis(id: string, result: AnalyzeProductResponse): 
           listing: result.listing,
           verdict: result.verdict,
           reasoning: result.reasoning,
-          localMarketContext: result.localMarketContext,
-          historicalContext: result.historicalContext,
+          marketData: {
+            localMarketContext: result.localMarketContext,
+            historicalContext: result.historicalContext,
+          },
+          ...(userId && { userId }),
+          ...(productId && { productId }),
         },
       },
       { upsert: true },
@@ -32,16 +41,16 @@ export async function saveAnalysis(id: string, result: AnalyzeProductResponse): 
 export async function findAnalysisById(id: string): Promise<AnalyzeProductResponse | null | 'unavailable'> {
   if (!isMongoReady()) return 'unavailable';
   try {
-    const doc = await AnalysisModel.findOne({ analysisId: id }).lean().exec();
+    const doc = (await AnalysisModel.findOne({ analysisId: id }).lean().exec()) as AnalysisDoc | null;
     if (!doc) return null;
     return {
-      analysisId: doc.analysisId as string,
-      listing: doc.listing as AnalyzeProductResponse['listing'],
-      verdict: doc.verdict as AnalyzeProductResponse['verdict'],
-      reasoning: doc.reasoning as AnalyzeProductResponse['reasoning'],
-      localMarketContext: doc.localMarketContext as AnalyzeProductResponse['localMarketContext'],
-      historicalContext: doc.historicalContext as AnalyzeProductResponse['historicalContext'],
-    };
+      analysisId: doc.analysisId,
+      listing: doc.listing,
+      verdict: doc.verdict,
+      reasoning: doc.reasoning,
+      localMarketContext: doc.marketData?.localMarketContext,
+      historicalContext: doc.marketData?.historicalContext,
+    } as unknown as AnalyzeProductResponse;
   } catch (err) {
     console.error('[analysisRepository] findById failed:', err instanceof Error ? err.message : err);
     return 'unavailable';

@@ -2,19 +2,113 @@ import mongoose, { Schema, type InferSchemaType } from 'mongoose';
 
 const analysisSchema = new Schema(
   {
-    analysisId: { type: String, required: true, unique: true, index: true },
-    listing: { type: Schema.Types.Mixed, required: true },
-    verdict: { type: Schema.Types.Mixed, required: true },
-    reasoning: { type: Schema.Types.Mixed, required: true },
-    localMarketContext: { type: Schema.Types.Mixed },
-    historicalContext: { type: Schema.Types.Mixed },
-    createdAt: { type: Date, default: () => new Date(), index: true },
+    analysisId: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true,
+    },
+    userId: {
+      type: mongoose.Types.ObjectId,
+      required: true,
+      index: true,
+    },
+    productId: {
+      type: mongoose.Types.ObjectId,
+      required: true,
+      index: true,
+    },
+    listing: {
+      title: { type: String, required: true },
+      price: { type: Number, required: true, gt: 0 },
+      currency: { type: String, required: true },
+      description: String,
+      url: String,
+      image: String,
+    },
+    verdict: {
+      type: String,
+      enum: ['worth_it', 'maybe', 'avoid'],
+      required: true,
+    },
+    verdictReason: {
+      type: String,
+      enum: ['overpriced', 'fair', 'underpriced', 'insufficient_data'],
+    },
+    reasoning: {
+      summary: String,
+      positives: [String],
+      concerns: [String],
+    },
+    redFlags: [
+      {
+        category: {
+          type: String,
+          enum: ['seller', 'price', 'condition', 'photo', 'description'],
+        },
+        severity: {
+          type: String,
+          enum: ['caution', 'warning', 'high_risk'],
+        },
+        description: String,
+      },
+    ],
+    sellerInfo: {
+      name: String,
+      rating: Number,
+      ratingCount: Number,
+      responseTime: String,
+      redFlags: [String],
+    },
+    marketData: {
+      localMarketContext: {
+        p25: Number,
+        p50: Number,
+        p75: Number,
+        mean: Number,
+        count: Number,
+        source: {
+          type: String,
+          enum: ['db', 'tavily', 'web'],
+        },
+        dataQuality: {
+          type: String,
+          enum: ['real', 'limited', 'insufficient'],
+        },
+      },
+      historicalContext: {
+        priceHistory: [
+          {
+            price: Number,
+            timestamp: Date,
+          },
+        ],
+        trend: {
+          type: String,
+          enum: ['increasing', 'stable', 'decreasing'],
+        },
+      },
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now,
+      index: true,
+    },
+    updatedAt: {
+      type: Date,
+      default: Date.now,
+    },
   },
-  { collection: 'analyses', versionKey: false },
+  {
+    collection: 'analyses',
+    versionKey: false,
+  },
 );
+
+analysisSchema.index({ userId: 1, createdAt: -1 });
+analysisSchema.index({ productId: 1 });
 
 export type AnalysisDoc = InferSchemaType<typeof analysisSchema>;
 
-export const AnalysisModel: mongoose.Model<AnalysisDoc> =
-  (mongoose.models.Analysis as mongoose.Model<AnalysisDoc>) ??
-  mongoose.model('Analysis', analysisSchema);
+export const AnalysisModel =
+  mongoose.models.Analysis ?? mongoose.model('Analysis', analysisSchema);
