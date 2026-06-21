@@ -1,13 +1,14 @@
-import { Router } from 'express';
+import { Router, type Response } from 'express';
 import { findAnalysisById } from './analysisRepository.js';
 import { runProductAnalysis } from './run.js';
-import { incrementUsage } from '../usage/usageTracker.js';
+import { checkQuotaAndIncrement } from '../services/quotaService.js';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/authMiddleware.js';
 import { productSchema } from './productSchema.js';
 
 export const analysisRouter = Router();
 
-// Auth not required in MVP — extension has no login flow yet.
-analysisRouter.post('/analyze', async (req, res, next) => {
+// POST /analyze — requires auth, checks quota before running analysis
+analysisRouter.post('/analyze', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const parsed = productSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -20,9 +21,21 @@ analysisRouter.post('/analyze', async (req, res, next) => {
         'Invalid request body';
       return res.status(400).json({ error: message });
     }
+
+    // Check quota before running analysis
+    const quota = await checkQuotaAndIncrement(req.userId!);
+    if (!quota.allowed) {
+      return res.status(402).json({
+        error: quota.reason || 'Quota exceeded',
+        analysesRemaining: 0,
+      });
+    }
+
     const result = await runProductAnalysis(parsed.data);
-    incrementUsage();
-    res.json(result);
+    res.json({
+      ...result,
+      analysesRemaining: quota.analysesRemaining,
+    });
   } catch (err) {
     next(err);
   }

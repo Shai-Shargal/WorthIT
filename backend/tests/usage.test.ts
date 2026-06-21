@@ -1,26 +1,63 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
-import { resetUsageForTests } from '../src/usage/usageTracker.js';
+
+vi.mock('../src/services/googleAuth.js', () => ({
+  verifyJWT: vi.fn(),
+}));
+
+vi.mock('../src/services/quotaService.js', () => ({
+  getAnalysesRemaining: vi.fn(),
+}));
+
+vi.mock('../src/models/User.js', () => ({
+  UserModel: {
+    findById: vi.fn(),
+  },
+}));
+
+import { verifyJWT } from '../src/services/googleAuth.js';
+import { getAnalysesRemaining } from '../src/services/quotaService.js';
+import { UserModel } from '../src/models/User.js';
+
+const verifyMock = vi.mocked(verifyJWT);
+const remainingMock = vi.mocked(getAnalysesRemaining);
+const userMock = vi.mocked(UserModel.findById);
 
 beforeEach(() => {
-  resetUsageForTests();
+  vi.clearAllMocks();
 });
 
-describe('GET /user/usage', () => {
-  it('returns usage stats with 200', async () => {
+describe('GET /user/me', () => {
+  it('returns user profile with analyses remaining', async () => {
+    verifyMock.mockReturnValue({ userId: 'user-123', email: 'test@example.com', tier: 'free' });
+    remainingMock.mockResolvedValue(15);
+    userMock.mockReturnValue({
+      exec: vi.fn().mockResolvedValue({
+        _id: 'user-123',
+        email: 'test@example.com',
+        tier: 'free',
+        trialExpiresAt: undefined,
+        createdAt: new Date(),
+      }),
+    } as any);
+
     const app = createApp();
-    const res = await request(app).get('/user/usage');
+    const res = await request(app)
+      .get('/user/me')
+      .set('Authorization', 'Bearer valid.token.here');
+
     expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty('analysesUsed');
-    expect(res.body).toHaveProperty('monthlyAnalysisLimit');
-    expect(res.body).toHaveProperty('remainingAnalyses');
-    expect(res.body).toHaveProperty('subscriptionPlan');
+    expect(res.body).toHaveProperty('id');
+    expect(res.body).toHaveProperty('email', 'test@example.com');
+    expect(res.body).toHaveProperty('tier', 'free');
+    expect(res.body).toHaveProperty('analysesRemaining', 15);
+    expect(res.body).toHaveProperty('createdAt');
   });
 
-  it('analysesUsed starts at 0', async () => {
+  it('returns 401 without auth token', async () => {
     const app = createApp();
-    const res = await request(app).get('/user/usage');
-    expect(res.body.analysesUsed).toBe(0);
+    const res = await request(app).get('/user/me');
+    expect(res.status).toBe(401);
   });
 });

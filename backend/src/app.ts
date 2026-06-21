@@ -4,7 +4,7 @@ import { analysisRouter } from './analysis/analysis.route.js';
 import { authRouter } from './auth/auth.route.js';
 import { marketplaceRouter } from './marketplace/marketplace.route.js';
 import { mongoStatus } from './database/mongoose.js';
-import { userRouter } from './usage/user.route.js';
+import { userRouter } from './user/user.route.js';
 
 export function createApp(): Application {
   const app = express();
