@@ -3,9 +3,22 @@ import { extractActiveListing } from './extractor.js';
 import { mountOverlay, type OverlayHandle } from './overlay.js';
 
 let activeOverlay: OverlayHandle | null = null;
+let lastAnalyzedUrl: string | null = null;
 
 function isItemDetailPage(): boolean {
   return location.pathname.includes('/marketplace/item/');
+}
+
+// Close overlay if user navigates to a different product (SPA navigation)
+function watchForUrlChange(): void {
+  const checkUrl = (): void => {
+    if (activeOverlay && lastAnalyzedUrl && location.href !== lastAnalyzedUrl) {
+      activeOverlay.remove();
+      activeOverlay = null;
+    }
+  };
+  // Check every 500ms for URL changes (handles Facebook's SPA routing)
+  setInterval(checkUrl, 500);
 }
 
 // Wait for Facebook's SPA to finish updating og:meta after navigation.
@@ -27,6 +40,9 @@ async function waitForFreshListing(timeoutMs = 4000): Promise<ReturnType<typeof 
 }
 
 export async function runAnalyze(): Promise<void> {
+  // Start watching for URL changes (handles SPA navigation)
+  watchForUrlChange();
+
   // Analyze only works on item detail pages — browse/search pages collect passively
   if (!isItemDetailPage()) {
     const overlay = mountOverlay();
@@ -37,6 +53,9 @@ export async function runAnalyze(): Promise<void> {
     );
     return;
   }
+
+  // Track this URL so we can detect if user navigates away
+  lastAnalyzedUrl = location.href;
 
   const overlay = mountOverlay();
   activeOverlay = overlay;
