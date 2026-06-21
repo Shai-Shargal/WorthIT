@@ -15,6 +15,7 @@ function watchForUrlChange(): void {
     if (activeOverlay && lastAnalyzedUrl && location.href !== lastAnalyzedUrl) {
       activeOverlay.remove();
       activeOverlay = null;
+      lastAnalyzedUrl = null; // Reset state so next analysis is fresh
     }
   };
   // Check every 500ms for URL changes (handles Facebook's SPA routing)
@@ -22,15 +23,22 @@ function watchForUrlChange(): void {
 }
 
 // Wait for Facebook's SPA to finish updating og:meta after navigation.
-// og:title lags behind the URL — retry until it no longer looks stale.
-async function waitForFreshListing(timeoutMs = 4000): Promise<ReturnType<typeof extractActiveListing>> {
+// og:title lags behind the URL — retry until we get fresh data that matches the current URL.
+async function waitForFreshListing(timeoutMs = 5000): Promise<ReturnType<typeof extractActiveListing>> {
   const deadline = Date.now() + timeoutMs;
+  const currentUrl = location.href;
   let product = extractActiveListing();
 
   while (Date.now() < deadline) {
+    // If URL changed while waiting, abort — don't use stale data
+    if (location.href !== currentUrl) return null;
+
     product = extractActiveListing();
-    if (product && product.price > 0) {
-      // Sanity check: price must be plausible (not a stale ₪0 or obviously wrong)
+    if (
+      product &&
+      product.price > 0 &&
+      product.url === currentUrl // Verify extracted URL matches current page
+    ) {
       return product;
     }
     await new Promise((r) => setTimeout(r, 300));
