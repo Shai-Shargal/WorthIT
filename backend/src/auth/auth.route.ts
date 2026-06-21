@@ -1,29 +1,32 @@
 import { Router } from 'express';
-import { randomUUID } from 'node:crypto';
-import { signToken } from './jwt.js';
+import { z } from 'zod';
+import { authenticateWithGoogle } from '../services/googleAuth.js';
+import { requireAuth } from '../middleware/authMiddleware.js';
 
 export const authRouter = Router();
 
-authRouter.post('/google', (req, res, next) => {
-  try {
-    const { googleToken } = req.body as { googleToken?: unknown };
+const googleAuthSchema = z.object({
+  googleToken: z.string().min(1),
+});
 
-    if (typeof googleToken !== 'string' || !googleToken.trim()) {
-      return res.status(400).json({ error: 'googleToken is required' });
+authRouter.post('/google', async (req, res, next) => {
+  try {
+    const parsed = googleAuthSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Missing googleToken' });
     }
 
-    // MVP stub: accept any non-empty token, generate a synthetic user.
-    // Replace this block with real Google token verification in production.
-    const userId = randomUUID();
-    const email = `user-${userId.slice(0, 8)}@worthit.stub`;
-
-    const accessToken = signToken({ userId, email });
-
-    return res.json({
-      user: { id: userId, email, fullName: 'WorthIT User', profilePicture: null },
-      accessToken,
-    });
+    const authResponse = await authenticateWithGoogle(parsed.data.googleToken);
+    res.json(authResponse);
   } catch (err) {
     next(err);
   }
+});
+
+authRouter.post('/logout', requireAuth, (_req, res) => {
+  // For MVP, we're not implementing Redis blacklist.
+  // In production, token should be added to blacklist with TTL.
+  // For now, client should discard token on logout.
+  res.json({ success: true });
 });
