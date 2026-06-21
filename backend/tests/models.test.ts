@@ -102,13 +102,13 @@ describe('Product schema validation', () => {
     }
   });
 
-  it('has no analysisHistory field', () => {
+  it('initializes analysisHistory as empty array', () => {
     const doc = new ProductModel({
       canonicalUrl: 'https://example.com/item/1',
       marketplace: 'facebook',
       title: 'Test',
     });
-    expect((doc as Record<string, unknown>).analysisHistory).toBeUndefined();
+    expect((doc as Record<string, unknown>).analysisHistory).toEqual([]);
   });
 
   it('has no marketObservations field', () => {

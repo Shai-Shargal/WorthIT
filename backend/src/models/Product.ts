@@ -35,6 +35,20 @@ const productSchema = new Schema(
       default: 0,
       min: 0,
     },
+    analysisHistory: [
+      {
+        analysisId: String,
+        verdict: {
+          type: String,
+          enum: ['worth_it', 'maybe', 'avoid'],
+        },
+        userId: mongoose.Types.ObjectId,
+        timestamp: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
     lastAnalyzedAt: Date,
     createdAt: {
       type: Date,

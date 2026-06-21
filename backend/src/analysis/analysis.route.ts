@@ -1,13 +1,15 @@
 import { Router, type Response } from 'express';
-import { findAnalysisById } from './analysisRepository.js';
+import { findAnalysisById, saveAnalysis } from './analysisRepository.js';
+import { buildAnalysisId } from './analysisRepository.js';
 import { runProductAnalysis } from './run.js';
 import { checkQuotaAndIncrement } from '../services/quotaService.js';
+import { findOrCreateProduct, updateProductAnalysisHistory } from '../services/productService.js';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/authMiddleware.js';
 import { productSchema } from './productSchema.js';
 
 export const analysisRouter = Router();
 
-// POST /analyze — requires auth, checks quota before running analysis
+// POST /analyze — requires auth, checks quota, creates product, links analysis
 analysisRouter.post('/analyze', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const parsed = productSchema.safeParse(req.body);
@@ -31,9 +33,29 @@ analysisRouter.post('/analyze', requireAuth, async (req: AuthenticatedRequest, r
       });
     }
 
+    // Find or create product
+    const productId = await findOrCreateProduct(parsed.data, 'facebook');
+
+    // Run analysis
     const result = await runProductAnalysis(parsed.data);
+
+    // Save analysis with userId + productId
+    const analysisId = buildAnalysisId();
+    await saveAnalysis(analysisId, result, req.userId, productId || undefined);
+
+    // Update product analysis history
+    if (productId) {
+      await updateProductAnalysisHistory(productId, {
+        analysisId,
+        verdict: result.verdict.verdict,
+        userId: req.userId!,
+        timestamp: new Date(),
+      });
+    }
+
     res.json({
       ...result,
+      analysisId,
       analysesRemaining: quota.analysesRemaining,
     });
   } catch (err) {
