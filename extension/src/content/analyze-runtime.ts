@@ -4,22 +4,25 @@ import { mountOverlay, type OverlayHandle } from './overlay.js';
 
 let activeOverlay: OverlayHandle | null = null;
 let lastAnalyzedUrl: string | null = null;
+let urlWatchInterval: ReturnType<typeof setInterval> | null = null;
 
 function isItemDetailPage(): boolean {
   return location.pathname.includes('/marketplace/item/');
 }
 
-// Close overlay if user navigates to a different product (SPA navigation)
+// Close overlay if user navigates to a different product (SPA navigation).
+// Clears any previous interval before starting a new one to prevent stacking.
 function watchForUrlChange(): void {
-  const checkUrl = (): void => {
+  if (urlWatchInterval) clearInterval(urlWatchInterval);
+  urlWatchInterval = setInterval(() => {
     if (activeOverlay && lastAnalyzedUrl && location.href !== lastAnalyzedUrl) {
       activeOverlay.remove();
       activeOverlay = null;
-      lastAnalyzedUrl = null; // Reset state so next analysis is fresh
+      lastAnalyzedUrl = null;
+      clearInterval(urlWatchInterval!);
+      urlWatchInterval = null;
     }
-  };
-  // Check every 500ms for URL changes (handles Facebook's SPA routing)
-  setInterval(checkUrl, 500);
+  }, 500);
 }
 
 // Wait for Facebook's SPA to finish updating og:meta after navigation.
@@ -44,7 +47,7 @@ async function waitForFreshListing(timeoutMs = 5000): Promise<ReturnType<typeof 
     await new Promise((r) => setTimeout(r, 300));
   }
 
-  return product;
+  return null;
 }
 
 export async function runAnalyze(): Promise<void> {
