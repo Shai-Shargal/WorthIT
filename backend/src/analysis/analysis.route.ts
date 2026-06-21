@@ -4,6 +4,7 @@ import { buildAnalysisId } from './analysisRepository.js';
 import { runProductAnalysis } from './run.js';
 import { checkQuotaAndIncrement } from '../services/quotaService.js';
 import { findOrCreateProduct, updateProductAnalysisHistory } from '../services/productService.js';
+import { getAllRedFlags } from '../services/fraudDetection.js';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/authMiddleware.js';
 import { productSchema } from './productSchema.js';
 
@@ -36,6 +37,9 @@ analysisRouter.post('/analyze', requireAuth, async (req: AuthenticatedRequest, r
     // Find or create product
     const productId = await findOrCreateProduct(parsed.data, 'facebook');
 
+    // Detect fraud indicators
+    const redFlags = getAllRedFlags(parsed.data);
+
     // Run analysis
     const result = await runProductAnalysis(parsed.data);
 
@@ -56,6 +60,7 @@ analysisRouter.post('/analyze', requireAuth, async (req: AuthenticatedRequest, r
     res.json({
       ...result,
       analysisId,
+      redFlags,
       analysesRemaining: quota.analysesRemaining,
     });
   } catch (err) {
