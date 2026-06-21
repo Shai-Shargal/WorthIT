@@ -1,12 +1,10 @@
 import { OAuth2Client } from 'google-auth-library';
 import jwt from 'jsonwebtoken';
-import { UserModel, type UserDoc } from '../models/User.js';
-
-const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+import { UserModel } from '../models/User.js';
 
 export interface GoogleTokenPayload {
   email: string;
-  sub: string; // googleId
+  sub: string;
   picture?: string;
   name?: string;
 }
@@ -23,19 +21,27 @@ export interface AuthResponse {
   };
 }
 
-export async function verifyGoogleToken(googleToken: string): Promise<GoogleTokenPayload> {
-  // For testing: if NODE_ENV is test and token is 'any-google-token', create mock payload
-  if (process.env.NODE_ENV === 'test' && googleToken === 'any-google-token') {
-    return {
-      email: 'test@example.com',
-      sub: 'google-id-test-123',
-      picture: 'https://example.com/test.jpg',
-      name: 'Test User',
-    };
-  }
+const TIER_LIMITS: Record<string, number> = {
+  free: 15,
+  pro: 100,
+  enterprise: 999999,
+};
 
+function getGoogleClient(): OAuth2Client {
+  return new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+}
+
+function isNewMonth(monthStartDate: Date): boolean {
+  const now = new Date();
+  return (
+    now.getFullYear() > monthStartDate.getFullYear() ||
+    now.getMonth() > monthStartDate.getMonth()
+  );
+}
+
+export async function verifyGoogleToken(googleToken: string): Promise<GoogleTokenPayload> {
   try {
-    const ticket = await googleClient.verifyIdToken({
+    const ticket = await getGoogleClient().verifyIdToken({
       idToken: googleToken,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
@@ -72,12 +78,7 @@ export function verifyJWT(token: string): { userId: string; email: string; tier:
   if (!secret) throw new Error('JWT_SECRET not set');
 
   try {
-    const decoded = jwt.verify(token, secret) as {
-      userId: string;
-      email: string;
-      tier: string;
-    };
-    return decoded;
+    return jwt.verify(token, secret) as { userId: string; email: string; tier: string };
   } catch (err) {
     throw new Error(`Invalid JWT: ${err instanceof Error ? err.message : 'Unknown error'}`);
   }
@@ -89,7 +90,6 @@ export async function authenticateWithGoogle(googleToken: string): Promise<AuthR
   let user = await UserModel.findOne({ googleId: payload.sub });
 
   if (!user) {
-    // Create new user with 1-week trial
     const trialExpiresAt = new Date();
     trialExpiresAt.setDate(trialExpiresAt.getDate() + 7);
 
@@ -104,26 +104,25 @@ export async function authenticateWithGoogle(googleToken: string): Promise<AuthR
     });
 
     await user.save();
+  } else if (user.monthStartDate && isNewMonth(user.monthStartDate as Date)) {
+    const now = new Date();
+    user.analysesUsedThisMonth = 0;
+    user.monthStartDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    await user.save();
   }
 
-  const internalToken = generateJWT(user._id.toString(), user.email, user.tier);
-
-  const tierLimits: Record<string, number> = {
-    free: 15,
-    pro: 100,
-    enterprise: 999999,
-  };
-
-  const analysesRemaining = tierLimits[user.tier] - user.analysesUsedThisMonth;
+  const token = generateJWT(user._id.toString(), user.email, user.tier);
+  const limit = TIER_LIMITS[user.tier] ?? 0;
+  const analysesRemaining = Math.max(0, limit - user.analysesUsedThisMonth);
 
   return {
-    token: internalToken,
+    token,
     user: {
       email: user.email,
       picture: user.googlePicture,
       name: user.googleName,
       tier: user.tier,
-      analysesRemaining: Math.max(0, analysesRemaining),
+      analysesRemaining,
       trialExpiresAt: user.trialExpiresAt,
     },
   };

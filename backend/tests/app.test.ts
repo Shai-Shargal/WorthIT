@@ -1,20 +1,6 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
-import { signToken } from '../src/auth/jwt.js';
-
-const TEST_JWT_SECRET = 'test-secret-for-app-tests';
-
-let authHeader: string;
-
-beforeAll(() => {
-  process.env.JWT_SECRET = TEST_JWT_SECRET;
-  authHeader = `Bearer ${signToken({ userId: 'test-user', email: 'test@test.com' })}`;
-});
-
-afterAll(() => {
-  delete process.env.JWT_SECRET;
-});
 
 describe('app startup', () => {
   it('GET /health returns 200', async () => {
@@ -58,7 +44,6 @@ describe('app startup', () => {
     const app = createApp();
     const res = await request(app)
       .post('/analysis/analyze')
-      .set('Authorization', authHeader)
       .send({ title: 'iPhone 13', currency: 'ILS' });
     expect(res.status).toBe(400);
   });

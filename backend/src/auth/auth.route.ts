@@ -25,8 +25,7 @@ authRouter.post('/google', async (req, res, next) => {
 });
 
 authRouter.post('/logout', requireAuth, (_req, res) => {
-  // For MVP, we're not implementing Redis blacklist.
-  // In production, token should be added to blacklist with TTL.
-  // For now, client should discard token on logout.
-  res.json({ success: true });
+  // Token blacklisting (Redis) deferred to post-MVP.
+  // Client is responsible for discarding the token.
+  res.json({ success: true, note: 'Discard token client-side — server-side invalidation not yet implemented' });
 });
