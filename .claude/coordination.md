@@ -9,8 +9,8 @@
 ## Current Status
 
 ### Task 2: Database Schema Refactoring
-**Status:** ⏳ AWAITING QA REVIEW  
-**Commit:** 401f783  
+**Status:** ✅ QA APPROVED — Task 3 cleared to proceed  
+**Commit:** 401f783 (dev) + QA fixes committed separately  
 **Dev Work Completed:** ✅
 
 **What to Review:**

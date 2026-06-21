@@ -27,6 +27,7 @@ export async function saveAnalysis(
             localMarketContext: result.localMarketContext,
             historicalContext: result.historicalContext,
           },
+          updatedAt: new Date(),
           ...(userId && { userId }),
           ...(productId && { productId }),
         },

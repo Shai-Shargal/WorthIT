@@ -4,11 +4,14 @@ const userFeedbackSchema = new Schema(
   {
     userId: {
       type: mongoose.Types.ObjectId,
+      ref: 'User',
       required: true,
       index: true,
     },
+    // References Analysis._id (ObjectId), not the UUID analysisId string field
     analysisId: {
       type: mongoose.Types.ObjectId,
+      ref: 'Analysis',
       required: true,
       index: true,
     },

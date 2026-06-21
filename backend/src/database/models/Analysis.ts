@@ -8,23 +8,21 @@ const analysisSchema = new Schema(
       unique: true,
       index: true,
     },
+    // Optional until Task 3 wires user context into the analysis route
     userId: {
       type: mongoose.Types.ObjectId,
-      required: true,
       index: true,
     },
     productId: {
       type: mongoose.Types.ObjectId,
-      required: true,
-      index: true,
     },
     listing: {
       title: { type: String, required: true },
-      price: { type: Number, required: true, gt: 0 },
+      price: { type: Number, required: true },
       currency: { type: String, required: true },
       description: String,
-      url: String,
-      image: String,
+      url: { type: String, maxlength: 2048 },
+      image: { type: String, maxlength: 2048 },
     },
     verdict: {
       type: String,
@@ -73,16 +71,11 @@ const analysisSchema = new Schema(
         },
         dataQuality: {
           type: String,
-          enum: ['real', 'limited', 'insufficient'],
+          enum: ['real', 'seed', 'limited', 'insufficient'],
         },
       },
       historicalContext: {
-        priceHistory: [
-          {
-            price: Number,
-            timestamp: Date,
-          },
-        ],
+        priceHistory: [{ price: Number, timestamp: Date }],
         trend: {
           type: String,
           enum: ['increasing', 'stable', 'decreasing'],
