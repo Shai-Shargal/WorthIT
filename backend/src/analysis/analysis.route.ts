@@ -1,6 +1,5 @@
 import { Router, type Response } from 'express';
 import { findAnalysisById, saveAnalysis } from './analysisRepository.js';
-import { buildAnalysisId } from './analysisRepository.js';
 import { runProductAnalysis } from './run.js';
 import { checkQuotaAndIncrement } from '../services/quotaService.js';
 import { findOrCreateProduct, updateProductAnalysisHistory } from '../services/productService.js';
@@ -40,17 +39,16 @@ analysisRouter.post('/analyze', requireAuth, async (req: AuthenticatedRequest, r
     // Detect fraud indicators
     const redFlags = getAllRedFlags(parsed.data);
 
-    // Run analysis
+    // Run analysis — result.analysisId is the single source of truth
     const result = await runProductAnalysis(parsed.data);
 
-    // Save analysis with userId + productId
-    const analysisId = buildAnalysisId();
-    await saveAnalysis(analysisId, result, req.userId, productId || undefined);
+    // Save with userId + productId linking
+    void saveAnalysis(result.analysisId, result, req.userId, productId || undefined);
 
     // Update product analysis history
     if (productId) {
-      await updateProductAnalysisHistory(productId, {
-        analysisId,
+      void updateProductAnalysisHistory(productId, {
+        analysisId: result.analysisId,
         verdict: result.verdict.verdict,
         userId: req.userId!,
         timestamp: new Date(),
@@ -59,7 +57,6 @@ analysisRouter.post('/analyze', requireAuth, async (req: AuthenticatedRequest, r
 
     res.json({
       ...result,
-      analysisId,
       redFlags,
       analysesRemaining: quota.analysesRemaining,
     });

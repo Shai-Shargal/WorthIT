@@ -7,9 +7,10 @@ export async function findOrCreateProduct(
   marketplace: string = 'facebook',
 ): Promise<string | null> {
   if (!isMongoReady()) return null;
+  if (!listing.url) return null; // No URL = can't deduplicate reliably
 
   try {
-    const canonicalUrl = listing.url || listing.title; // Use URL if available, else title as fallback
+    const canonicalUrl = listing.url.split('?')[0]; // strip query params
 
     const setOnInsert: Record<string, unknown> = {
       canonicalUrl,
@@ -51,11 +52,13 @@ export async function updateProductAnalysisHistory(
       productId,
       {
         $push: {
-          analysisHistory: analysisData,
+          analysisHistory: {
+            $each: [analysisData],
+            $slice: -50, // keep last 50 only — prevents unbounded growth
+          },
         },
-        $set: {
-          lastAnalyzedAt: new Date(),
-        },
+        $inc: { analysisCount: 1 },
+        $set: { lastAnalyzedAt: new Date() },
       },
     ).exec();
   } catch (err) {
