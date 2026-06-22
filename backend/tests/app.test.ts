@@ -87,9 +87,20 @@ describe('app startup', () => {
     expect(res.status).toBe(401);
   });
 
-  it('GET /analysis/:id requires auth token', async () => {
+  it('GET /analysis/:id returns 401 without auth token', async () => {
     const app = createApp();
     const res = await request(app).get('/analysis/test-id');
     expect(res.status).toBe(401);
+  });
+
+  it('GET /analysis/:id returns 503 when storage unavailable (no Mongo in tests)', async () => {
+    verifyMock.mockReturnValue({ userId: 'user-123', email: 'test@example.com', tier: 'free' });
+    analysisMock.mockReturnValue({ lean: () => ({ exec: vi.fn().mockResolvedValue(null) }) } as never);
+    const app = createApp();
+    const res = await request(app)
+      .get('/analysis/00000000-0000-0000-0000-000000000000')
+      .set('Authorization', 'Bearer valid.token.here');
+    expect(res.status).toBe(503);
+    expect(res.body.error).toBe('Storage unavailable');
   });
 });

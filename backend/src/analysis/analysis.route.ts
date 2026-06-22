@@ -1,10 +1,11 @@
 import { Router, type Response } from 'express';
-import { findAnalysisById, saveAnalysis } from './analysisRepository.js';
+import { saveAnalysis } from './analysisRepository.js';
 import { runProductAnalysis } from './run.js';
 import { checkQuotaAndIncrement } from '../services/quotaService.js';
 import { findOrCreateProduct, updateProductAnalysisHistory } from '../services/productService.js';
 import { getAllRedFlags } from '../services/fraudDetection.js';
 import { AnalysisModel, type AnalysisDoc } from '../database/models/Analysis.js';
+import { isMongoReady } from '../database/mongoose.js';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/authMiddleware.js';
 import { productSchema } from './productSchema.js';
 
@@ -69,20 +70,30 @@ analysisRouter.post('/analyze', requireAuth, async (req: AuthenticatedRequest, r
 // GET /analysis/:id — retrieve single analysis (user-scoped)
 analysisRouter.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
-    const result = await findAnalysisById(req.params.id);
-    if (result === 'unavailable') {
+    if (!isMongoReady()) {
       return res.status(503).json({ error: 'Storage unavailable' });
     }
-    if (!result) {
+
+    const doc = (await AnalysisModel.findOne({ analysisId: req.params.id }).lean().exec()) as AnalysisDoc | null;
+
+    if (!doc) {
       return res.status(404).json({ error: 'Analysis not found' });
     }
 
-    // Check that user owns this analysis
-    const doc = (await AnalysisModel.findOne({ analysisId: req.params.id }).lean().exec()) as AnalysisDoc | null;
-
-    if (!doc || doc.userId?.toString() !== req.userId) {
+    // Allow access if: user owns it, or analysis predates auth (userId not set)
+    if (doc.userId && doc.userId.toString() !== req.userId) {
       return res.status(403).json({ error: 'Not authorized to view this analysis' });
     }
+
+    // Map doc to AnalyzeProductResponse shape
+    const result = {
+      analysisId: doc.analysisId,
+      listing: doc.listing,
+      verdict: doc.verdict,
+      reasoning: doc.reasoning,
+      localMarketContext: doc.marketData?.localMarketContext,
+      historicalContext: doc.marketData?.historicalContext,
+    };
 
     res.json(result);
   } catch (err) {

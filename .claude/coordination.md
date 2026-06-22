@@ -6,6 +6,10 @@
 
 ---
 
+### Task 6: User Endpoints
+**Status:** ✅ QA APPROVED — Task 7 cleared to proceed
+**Commit:** 68cff87 (dev) + QA fixes committed separately
+
 ### Tasks 4 + 5: Product Dedup + Fraud Detection
 **Status:** ✅ QA APPROVED — Task 6 cleared to proceed
 **Commits:** 5c855ba + 949028c (dev) + QA fixes committed separately
