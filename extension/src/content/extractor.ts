@@ -79,6 +79,89 @@ export function extractFromAnchor(anchor: HTMLAnchorElement, pageCcy: string): P
   return { title, price, currency, url, image: findImage(anchor) };
 }
 
+function extractTitle(main: Element): string | null {
+  const selectors = [
+    'meta[property="og:title"]',
+    'h1',
+    'h2',
+    '[data-testid="item-title"]',
+    '[role="heading"]',
+  ];
+
+  for (const selector of selectors) {
+    try {
+      const el = main.querySelector(selector);
+      if (el) {
+        const text = el.getAttribute('content') || getInnerText(el);
+        const cleaned = text.trim().replace(/\s*[|–—-]\s*Facebook\s*$/i, '').trim();
+        if (cleaned && !isLikelyFbUiTitle(cleaned)) return cleaned;
+      }
+    } catch {
+      // Selector failed, continue to next
+    }
+  }
+
+  // Last resort: pick from text lines
+  const lines = getInnerText(main)
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return pickTitle(lines) || null;
+}
+
+function extractPrice(main: Element): { price: number | null; text: string | null } {
+  const priceSources = [
+    () => document.querySelector('meta[property="og:price:amount"]')?.getAttribute('content'),
+    () => main.querySelector('[data-testid="item-price"]')?.textContent?.trim(),
+    () => main.querySelector('span[role="img"][aria-label*="₪"]')?.getAttribute('aria-label'),
+    () => findPriceText(main),
+  ];
+
+  for (const source of priceSources) {
+    try {
+      const priceText = source();
+      if (priceText) {
+        const price = parsePrice(priceText);
+        if (price) return { price, text: priceText };
+      }
+    } catch {
+      // Source failed, continue
+    }
+  }
+
+  return { price: null, text: null };
+}
+
+function extractImage(main: Element): string | undefined {
+  const selectors = [
+    'img[alt*="product"], img[alt*="item"]',
+    'img[loading]',
+    'img[src*="marketplace"]',
+    'img',
+  ];
+
+  for (const selector of selectors) {
+    try {
+      const img = main.querySelector<HTMLImageElement>(selector);
+      if (img?.src && img.src.length < 2048) return img.src;
+    } catch {
+      // Selector failed
+    }
+  }
+
+  return undefined;
+}
+
+function logExtractionError(field: string, url: string, attempted: string[]): void {
+  const msg = `[extractor] Failed to extract ${field} from ${url}. Tried: ${attempted.join(', ')}`;
+  console.warn(msg);
+
+  // Try to log to Sentry if available (loaded via extension CSP)
+  if (typeof window !== 'undefined' && (window as any).Sentry) {
+    (window as any).Sentry.captureMessage(msg, 'warning');
+  }
+}
+
 /** Extract the active marketplace listing (item page or first visible card). */
 export function extractActiveListing(): ProductInput | null {
   const pageCcy = fallbackCurrencyFromPage();
@@ -89,44 +172,39 @@ export function extractActiveListing(): ProductInput | null {
       document.querySelector('div[data-pagelet]') ??
       document.body;
 
-    // og:title is set server-side by Facebook — strip " | Facebook" suffix if present
-    const ogTitle = document
-      .querySelector('meta[property="og:title"]')
-      ?.getAttribute('content')
-      ?.trim()
-      ?.replace(/\s*[|–—-]\s*Facebook\s*$/i, '')
-      ?.trim();
+    const title = extractTitle(main);
+    if (!title) {
+      logExtractionError('title', location.href, [
+        'og:title',
+        'h1',
+        'h2',
+        'data-testid=item-title',
+        'text lines',
+      ]);
+      return null;
+    }
 
-    const title =
-      ogTitle ||
-      (main as Element).querySelector('h1')?.textContent?.trim() ||
-      pickTitle(
-        getInnerText(main)
-          .split('\n')
-          .map((s) => s.trim())
-          .filter(Boolean),
-      );
+    const { price, text: priceText } = extractPrice(main);
+    if (!price) {
+      logExtractionError('price', location.href, [
+        'og:price:amount',
+        'data-testid=item-price',
+        'aria-label with ₪',
+        'DOM scan',
+      ]);
+      return null;
+    }
 
-    if (!title || isLikelyFbUiTitle(title)) return null;
-
-    // Try og:price:amount first (Facebook sometimes sets this), then scan DOM
-    const ogPrice = document
-      .querySelector('meta[property="og:price:amount"]')
-      ?.getAttribute('content');
     const ogCurrency = document
       .querySelector('meta[property="og:price:currency"]')
       ?.getAttribute('content');
-
-    const priceText = findPriceText(main);
-    const price = parsePrice(ogPrice) ?? parsePrice(priceText);
-    if (!price) return null;
 
     const currency =
       ogCurrency?.trim().toUpperCase() ||
       inferCurrencyFromPriceText(priceText ?? '') ||
       pageCcy;
 
-    const image = findImage(main);
+    const image = extractImage(main);
 
     // og:description holds the seller's written description on item pages
     const description =
