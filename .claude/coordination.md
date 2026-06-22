@@ -6,6 +6,10 @@
 
 ---
 
+### Task 7: Facebook DOM Extractor
+**Status:** ✅ QA APPROVED — Task 8 cleared to proceed
+**Commit:** 727f95f (dev) + QA fixes committed separately
+
 ### Task 6: User Endpoints
 **Status:** ✅ QA APPROVED — Task 7 cleared to proceed
 **Commit:** 68cff87 (dev) + QA fixes committed separately

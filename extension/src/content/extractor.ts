@@ -79,33 +79,38 @@ export function extractFromAnchor(anchor: HTMLAnchorElement, pageCcy: string): P
   return { title, price, currency, url, image: findImage(anchor) };
 }
 
-function extractTitle(main: Element): string | null {
-  const selectors = [
-    'meta[property="og:title"]',
-    'h1',
-    'h2',
-    '[data-testid="item-title"]',
-    '[role="heading"]',
-  ];
+// Meta selectors must use document scope — metas live in <head>, not inside main
+const TITLE_META_SELECTORS = ['meta[property="og:title"]'] as const;
+const TITLE_DOM_SELECTORS = ['h1', 'h2', '[data-testid="item-title"]', '[role="heading"]'] as const;
 
-  for (const selector of selectors) {
+function extractTitle(main: Element): string | null {
+  // Check meta tags first (document-scoped)
+  for (const selector of TITLE_META_SELECTORS) {
+    try {
+      const el = document.querySelector(selector);
+      if (el) {
+        // meta elements use the content attribute; DOM elements use inner text
+        const text = (el.getAttribute('content') ?? getInnerText(el)).trim()
+          .replace(/\s*[|–—-]\s*Facebook\s*$/i, '').trim();
+        if (text && !isLikelyFbUiTitle(text)) return text;
+      }
+    } catch { /* skip broken selector */ }
+  }
+
+  // Then check DOM elements within main
+  for (const selector of TITLE_DOM_SELECTORS) {
     try {
       const el = main.querySelector(selector);
       if (el) {
-        const text = el.getAttribute('content') || getInnerText(el);
-        const cleaned = text.trim().replace(/\s*[|–—-]\s*Facebook\s*$/i, '').trim();
-        if (cleaned && !isLikelyFbUiTitle(cleaned)) return cleaned;
+        const text = getInnerText(el).trim()
+          .replace(/\s*[|–—-]\s*Facebook\s*$/i, '').trim();
+        if (text && !isLikelyFbUiTitle(text)) return text;
       }
-    } catch {
-      // Selector failed, continue to next
-    }
+    } catch { /* skip broken selector */ }
   }
 
   // Last resort: pick from text lines
-  const lines = getInnerText(main)
-    .split('\n')
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const lines = getInnerText(main).split('\n').map((s) => s.trim()).filter(Boolean);
   return pickTitle(lines) || null;
 }
 
@@ -132,34 +137,26 @@ function extractPrice(main: Element): { price: number | null; text: string | nul
   return { price: null, text: null };
 }
 
-function extractImage(main: Element): string | undefined {
-  const selectors = [
-    'img[alt*="product"], img[alt*="item"]',
-    'img[loading]',
-    'img[src*="marketplace"]',
-    'img',
-  ];
+// Facebook product images consistently carry referrerpolicy; use that as primary signal.
+// The bare 'img' fallback catches any remaining cases.
+const IMAGE_SELECTORS = [
+  'img[referrerpolicy]',
+  'img[src*="fbcdn.net"]',
+  'img',
+] as const;
 
-  for (const selector of selectors) {
+function extractImage(main: Element): string | undefined {
+  for (const selector of IMAGE_SELECTORS) {
     try {
       const img = main.querySelector<HTMLImageElement>(selector);
       if (img?.src && img.src.length < 2048) return img.src;
-    } catch {
-      // Selector failed
-    }
+    } catch { /* skip broken selector */ }
   }
-
   return undefined;
 }
 
 function logExtractionError(field: string, url: string, attempted: string[]): void {
-  const msg = `[extractor] Failed to extract ${field} from ${url}. Tried: ${attempted.join(', ')}`;
-  console.warn(msg);
-
-  // Try to log to Sentry if available (loaded via extension CSP)
-  if (typeof window !== 'undefined' && (window as any).Sentry) {
-    (window as any).Sentry.captureMessage(msg, 'warning');
-  }
+  console.warn(`[extractor] Failed to extract ${field} from ${url}. Tried: ${attempted.join(', ')}`);
 }
 
 /** Extract the active marketplace listing (item page or first visible card). */
@@ -175,10 +172,8 @@ export function extractActiveListing(): ProductInput | null {
     const title = extractTitle(main);
     if (!title) {
       logExtractionError('title', location.href, [
-        'og:title',
-        'h1',
-        'h2',
-        'data-testid=item-title',
+        ...TITLE_META_SELECTORS,
+        ...TITLE_DOM_SELECTORS,
         'text lines',
       ]);
       return null;
@@ -187,10 +182,10 @@ export function extractActiveListing(): ProductInput | null {
     const { price, text: priceText } = extractPrice(main);
     if (!price) {
       logExtractionError('price', location.href, [
-        'og:price:amount',
-        'data-testid=item-price',
-        'aria-label with ₪',
-        'DOM scan',
+        'meta[og:price:amount]',
+        '[data-testid="item-price"]',
+        'span[role="img"][aria-label*="₪"]',
+        'DOM text scan',
       ]);
       return null;
     }
