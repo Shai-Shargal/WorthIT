@@ -139,7 +139,7 @@
 ### Test 3.4: Trial Expiry
 - [ ] After trial expires, attempt analysis beyond free tier limit
 - [ ] **Expected:** 402 "Quota exceeded"
-- [ ] **Check:** trialExpiresAt is cleared from user doc
+- [ ] **Check:** User is blocked by the monthly quota (trialExpiresAt date remains in the doc — it is intentionally NOT cleared, the system simply ignores it once it's in the past)
 
 ### Test 3.5: Monthly Reset
 - [ ] After month boundary, analysesRemaining resets
@@ -174,7 +174,7 @@
 
 ### Test 4.3: GET /user/analyses with Marketplace Filter
 - [ ] Request with ?marketplace=facebook
-- [ ] **Expected:** 200 (filter accepted, though results currently not filtered by marketplace)
+- [ ] **Expected:** 200 — param is validated and accepted, but results are NOT filtered by marketplace (all user analyses returned). Filtering by marketplace requires a Product join deferred to Phase 2. Verify the total count matches all user analyses, not just Facebook ones.
 - [ ] Request with ?marketplace=invalid
 - [ ] **Expected:** 400 "marketplace must be one of: facebook, yad2, ebay, amazon"
 
@@ -188,7 +188,23 @@
   ```
 - [ ] **Expected:** 201 with feedback id, helpful, accuracy, createdAt
 
-### Test 4.5: Feedback Validation
+### Test 4.5: GET /analysis/:id (Scoped Retrieval)
+- [ ] Fetch own analysis: `curl -H "Authorization: Bearer $TOKEN" http://localhost:4000/analysis/<uuid>`
+- [ ] **Expected:** 200 with full analysis result
+- [ ] Fetch another user's analysis with correct UUID
+- [ ] **Expected:** 403 "Not authorized to view this analysis"
+- [ ] Fetch without auth
+- [ ] **Expected:** 401
+- [ ] Fetch non-existent UUID
+- [ ] **Expected:** 404 or 503 (if DB unavailable)
+
+### Test 4.6: POST /auth/logout
+- [ ] `curl -X POST -H "Authorization: Bearer $TOKEN" http://localhost:4000/auth/logout`
+- [ ] **Expected:** 200 `{"success":true,"note":"Discard token client-side..."}`
+- [ ] **Note:** Token is NOT invalidated server-side — client must discard it
+- [ ] Without token → 401
+
+### Test 4.7: Feedback Validation
 - [ ] Missing analysisId → 400
 - [ ] Missing helpful → 400
 - [ ] accuracy not 1-5 → 400
@@ -209,10 +225,10 @@
   - endpoint (POST /analysis/analyze)
   - request headers
 
-### Test 5.2: 401/402 Errors → Sentry (Info Level)
+### Test 5.2: 4xx Errors → Console Only (NOT Sentry)
 - [ ] Trigger 402 (quota exceeded)
-- [ ] **Expected:** Should NOT appear as ERROR in Sentry, only INFO
-- [ ] **Check:** Error context includes userId, endpoint
+- [ ] **Expected:** 402 response returned to client
+- [ ] **Check:** 4xx errors are logged to `console.warn` only — they do NOT appear in Sentry at any level (info or error). Only 5xx errors are captured by Sentry. Verify no Sentry event is created for quota/auth failures.
 
 ### Test 5.3: Invalid Input → No Sentry Log
 - [ ] Send 400 validation error
