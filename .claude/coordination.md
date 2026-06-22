@@ -6,6 +6,10 @@
 
 ---
 
+### Task 8: Sentry, Rate Limiting, CORS Hardening
+**Status:** ✅ QA APPROVED — Task 9 cleared to proceed
+**Commit:** 556c75c (dev) + QA fixes committed separately
+
 ### Task 7: Facebook DOM Extractor
 **Status:** ✅ QA APPROVED — Task 8 cleared to proceed
 **Commit:** 727f95f (dev) + QA fixes committed separately

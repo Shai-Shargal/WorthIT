@@ -1,5 +1,6 @@
 import * as Sentry from '@sentry/node';
 import type { Request, Response, NextFunction } from 'express';
+import type { AuthenticatedRequest } from '../middleware/authMiddleware.js';
 
 export function initSentry(): void {
   if (!process.env.SENTRY_DSN) {
@@ -37,7 +38,7 @@ export function captureErrorContext(
   if (!process.env.SENTRY_DSN) return;
 
   const message = err instanceof Error ? err.message : String(err);
-  const userId = (req as any).userId;
+  const userId = (req as AuthenticatedRequest).userId;
   const path = req.path;
   const method = req.method;
 

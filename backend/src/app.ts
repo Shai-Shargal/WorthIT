@@ -11,22 +11,19 @@ import { rateLimiter } from './middleware/rateLimiter.js';
 export function createApp(): Application {
   const app = express();
 
-  // Initialize Sentry for error tracking
-  initSentry();
-
-  // Sentry request handler must be first
+  // Sentry request handler must be first (initSentry called once in main.ts)
   app.use(sentryRequestHandler());
 
-  // CORS: require explicit allowlist in production
+  // CORS: allow all origins in dev, require explicit list in prod
   const allowedOrigins = process.env.CORS_ORIGIN
     ? process.env.CORS_ORIGIN.split(',').map((s) => s.trim())
-    : process.env.NODE_ENV === 'production'
-      ? [] // No origins allowed in prod without explicit config
-      : ['chrome-extension://', 'http://localhost:3000', 'http://localhost:5173']; // Dev defaults
+    : null;
 
   app.use(
     cors({
-      origin: allowedOrigins.length > 0 ? allowedOrigins : false,
+      origin: process.env.NODE_ENV === 'production'
+        ? (allowedOrigins ?? false)   // prod: explicit list required
+        : (allowedOrigins ?? true),   // dev: allow all (extension ID unknown at dev time)
       credentials: true,
       methods: ['GET', 'POST', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],

@@ -17,9 +17,13 @@ function getClientIp(req: Request): string {
   );
 }
 
+export function resetStoreForTests(): void {
+  store.clear();
+}
+
 export function rateLimiter(req: Request, res: Response, next: NextFunction): void | Response {
-  // Only rate limit POST /analyze
-  if (req.method !== 'POST' || !req.path.includes('/analyze')) {
+  // Only rate limit POST /analyze (exact match — avoids catching future /reanalyze etc.)
+  if (req.method !== 'POST' || req.path !== '/analyze') {
     return next();
   }
 
