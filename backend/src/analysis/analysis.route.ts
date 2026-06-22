@@ -4,6 +4,7 @@ import { runProductAnalysis } from './run.js';
 import { checkQuotaAndIncrement } from '../services/quotaService.js';
 import { findOrCreateProduct, updateProductAnalysisHistory } from '../services/productService.js';
 import { getAllRedFlags } from '../services/fraudDetection.js';
+import { AnalysisModel, type AnalysisDoc } from '../database/models/Analysis.js';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/authMiddleware.js';
 import { productSchema } from './productSchema.js';
 
@@ -65,7 +66,8 @@ analysisRouter.post('/analyze', requireAuth, async (req: AuthenticatedRequest, r
   }
 });
 
-analysisRouter.get('/:id', async (req, res, next) => {
+// GET /analysis/:id — retrieve single analysis (user-scoped)
+analysisRouter.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const result = await findAnalysisById(req.params.id);
     if (result === 'unavailable') {
@@ -74,6 +76,14 @@ analysisRouter.get('/:id', async (req, res, next) => {
     if (!result) {
       return res.status(404).json({ error: 'Analysis not found' });
     }
+
+    // Check that user owns this analysis
+    const doc = (await AnalysisModel.findOne({ analysisId: req.params.id }).lean().exec()) as AnalysisDoc | null;
+
+    if (!doc || doc.userId?.toString() !== req.userId) {
+      return res.status(403).json({ error: 'Not authorized to view this analysis' });
+    }
+
     res.json(result);
   } catch (err) {
     next(err);
