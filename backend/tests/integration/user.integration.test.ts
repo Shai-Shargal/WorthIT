@@ -6,10 +6,6 @@ vi.mock('../../src/services/googleAuth.js', () => ({
   verifyJWT: vi.fn(),
 }));
 
-vi.mock('../../src/services/quotaService.js', () => ({
-  getAnalysesRemaining: vi.fn(),
-}));
-
 vi.mock('../../src/models/User.js', () => ({
   UserModel: {
     findById: vi.fn(),
@@ -29,13 +25,11 @@ vi.mock('../../src/models/UserFeedback.js', () => ({
 }));
 
 import { verifyJWT } from '../../src/services/googleAuth.js';
-import { getAnalysesRemaining } from '../../src/services/quotaService.js';
 import { UserModel } from '../../src/models/User.js';
 import { AnalysisModel } from '../../src/database/models/Analysis.js';
 import { UserFeedbackModel } from '../../src/models/UserFeedback.js';
 
 const verifyMock = vi.mocked(verifyJWT);
-const remainingMock = vi.mocked(getAnalysesRemaining);
 const userMock = vi.mocked(UserModel.findById);
 const analysisFindMock = vi.mocked(AnalysisModel.find);
 const analysisCountMock = vi.mocked(AnalysisModel.countDocuments);

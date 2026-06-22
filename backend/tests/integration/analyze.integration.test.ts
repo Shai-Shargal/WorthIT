@@ -15,14 +15,21 @@ vi.mock('../../src/services/productService.js', () => ({
   updateProductAnalysisHistory: vi.fn(),
 }));
 
+vi.mock('../../src/analysis/analysisRepository.js', () => ({
+  saveAnalysis: vi.fn().mockResolvedValue(undefined),
+  buildAnalysisId: vi.fn(() => 'test-analysis-uuid'),
+}));
+
 import { verifyJWT } from '../../src/services/googleAuth.js';
 import { checkQuotaAndIncrement } from '../../src/services/quotaService.js';
 import { findOrCreateProduct, updateProductAnalysisHistory } from '../../src/services/productService.js';
+import { saveAnalysis } from '../../src/analysis/analysisRepository.js';
 
 const verifyMock = vi.mocked(verifyJWT);
 const quotaMock = vi.mocked(checkQuotaAndIncrement);
 const productMock = vi.mocked(findOrCreateProduct);
 const historyMock = vi.mocked(updateProductAnalysisHistory);
+const saveMock = vi.mocked(saveAnalysis);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -146,10 +153,18 @@ describe('Analyze Endpoint Integration', () => {
         currency: 'ILS',
       });
 
-    // Verify product was created/found
+    // Verify product was found/created
     expect(productMock).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'MacBook Pro', price: 5000 }),
       'facebook',
+    );
+
+    // Verify analysis was saved with userId and productId linked
+    expect(saveMock).toHaveBeenCalledWith(
+      expect.any(String),           // analysisId
+      expect.anything(),            // result
+      'user-123',                   // userId from auth middleware
+      'product-456',                // productId from findOrCreateProduct
     );
 
     // Verify product history was updated
