@@ -100,6 +100,9 @@ const analysisSchema = new Schema(
 
 analysisSchema.index({ userId: 1, createdAt: -1 });
 analysisSchema.index({ productId: 1 });
+// Phase 2 — Seller Intelligence: fast lookup of prior analyses by seller name.
+// Sparse so only docs that actually have a seller name pay the index cost.
+analysisSchema.index({ 'sellerInfo.name': 1, createdAt: -1 }, { sparse: true });
 
 export type AnalysisDoc = InferSchemaType<typeof analysisSchema>;
 
