@@ -111,8 +111,10 @@ describe('Auth Integration - Google OAuth Flow', () => {
   it('Protected endpoints reject requests without auth token', async () => {
     const app = createApp();
 
+    // /analysis/analyze is intentionally open during pre-PMF algorithm
+    // iteration — see optionalAuth + analysis.route.ts. The user routes stay
+    // gated since they expose user-scoped data.
     const endpoints = [
-      { method: 'post', path: '/analysis/analyze', body: { title: 'Test', price: 100, currency: 'ILS' } },
       { method: 'get', path: '/user/me' },
       { method: 'get', path: '/user/analyses' },
     ];

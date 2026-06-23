@@ -6,13 +6,16 @@ import { findOrCreateProduct, updateProductAnalysisHistory } from '../services/p
 import { getAllRedFlags } from '../services/fraudDetection.js';
 import { AnalysisModel, type AnalysisDoc } from '../database/models/Analysis.js';
 import { isMongoReady } from '../database/mongoose.js';
-import { requireAuth, type AuthenticatedRequest } from '../middleware/authMiddleware.js';
+import { optionalAuth, requireAuth, type AuthenticatedRequest } from '../middleware/authMiddleware.js';
 import { productSchema } from './productSchema.js';
 
 export const analysisRouter = Router();
 
-// POST /analyze — requires auth, checks quota, creates product, links analysis
-analysisRouter.post('/analyze', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
+// POST /analyze — open during pre-PMF algorithm iteration. Quota and analysis
+// ownership are linked to the caller's userId when a valid Bearer token is
+// present (via optionalAuth), but unauthenticated callers are accepted too so
+// we can dogfood the algorithm without a sign-in flow.
+analysisRouter.post('/analyze', optionalAuth, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const parsed = productSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -26,33 +29,30 @@ analysisRouter.post('/analyze', requireAuth, async (req: AuthenticatedRequest, r
       return res.status(400).json({ error: message });
     }
 
-    // Check quota before running analysis
-    const quota = await checkQuotaAndIncrement(req.userId!);
-    if (!quota.allowed) {
-      return res.status(402).json({
-        error: quota.reason || 'Quota exceeded',
-        analysesRemaining: 0,
-      });
+    // Only enforce quota when we actually know who the caller is.
+    let analysesRemaining: number | undefined;
+    if (req.userId) {
+      const quota = await checkQuotaAndIncrement(req.userId);
+      if (!quota.allowed) {
+        return res.status(402).json({
+          error: quota.reason || 'Quota exceeded',
+          analysesRemaining: 0,
+        });
+      }
+      analysesRemaining = quota.analysesRemaining;
     }
 
-    // Find or create product
     const productId = await findOrCreateProduct(parsed.data, 'facebook');
-
-    // Detect fraud indicators
     const redFlags = getAllRedFlags(parsed.data);
-
-    // Run analysis — result.analysisId is the single source of truth
     const result = await runProductAnalysis(parsed.data);
 
-    // Save with userId + productId linking
     void saveAnalysis(result.analysisId, result, req.userId, productId || undefined);
 
-    // Update product analysis history
-    if (productId) {
+    if (productId && req.userId) {
       void updateProductAnalysisHistory(productId, {
         analysisId: result.analysisId,
         verdict: result.verdict.verdict,
-        userId: req.userId!,
+        userId: req.userId,
         timestamp: new Date(),
       });
     }
@@ -60,7 +60,7 @@ analysisRouter.post('/analyze', requireAuth, async (req: AuthenticatedRequest, r
     res.json({
       ...result,
       redFlags,
-      analysesRemaining: quota.analysesRemaining,
+      ...(analysesRemaining !== undefined ? { analysesRemaining } : {}),
     });
   } catch (err) {
     next(err);

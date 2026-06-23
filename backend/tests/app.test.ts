@@ -79,12 +79,15 @@ describe('app startup', () => {
     expect(res.status).toBe(400);
   });
 
-  it('POST /analysis/analyze returns 401 without auth token', async () => {
+  it('POST /analysis/analyze succeeds without auth token (open pre-PMF)', async () => {
     const app = createApp();
     const res = await request(app)
       .post('/analysis/analyze')
       .send({ title: 'iPhone 13', price: 1500, currency: 'ILS' });
-    expect(res.status).toBe(401);
+    // Anonymous requests are accepted: no quota check, no userId linking.
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('verdict');
+    expect(res.body).not.toHaveProperty('analysesRemaining');
   });
 
   it('GET /analysis/:id returns 401 without auth token', async () => {

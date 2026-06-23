@@ -122,3 +122,4 @@ describe('requireAuth middleware', () => {
     expect(res.body.error).toMatch(/invalid|expired/i);
   });
 });
+
