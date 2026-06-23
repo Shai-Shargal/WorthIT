@@ -1,73 +1,22 @@
-import { z } from 'zod';
 import { __resetOpenAiClientForTests, getOpenAiClient, getOpenAiModel, useVision } from './client.js';
+import {
+  CONDITION_SYSTEM_PROMPT,
+  conditionResponseSchema,
+  NEUTRAL_CONDITION,
+  clampScore,
+  type ConditionInput,
+  type ConditionResult,
+} from './conditionSchema.js';
+import { cacheKey, getCachedCondition, rememberCondition, clearConditionCache } from './conditionCache.js';
 
-export type ConditionLabel = 'excellent' | 'good' | 'fair' | 'poor';
-
-export interface ConditionInput {
-  title: string;
-  description?: string;
-  imageUrl?: string;
-}
-
-export interface ConditionResult {
-  conditionScore: number;
-  conditionLabel: ConditionLabel;
-  signals: string[];
-}
-
-const NEUTRAL: ConditionResult = {
-  conditionScore: 1,
-  conditionLabel: 'good',
-  signals: [],
-};
-
-const SYSTEM_PROMPT = `You evaluate the physical condition of a second-hand product based ONLY on the
-title and optional description. You never judge price, market, or whether it is
-a good deal. Return JSON ONLY in this exact schema:
-{ "conditionScore": number 0..1, "conditionLabel": "excellent"|"good"|"fair"|"poor", "signals": string[] }
-Rules:
-- 1.0 = like new, sealed, never used.
-- 0.0 = unusable / for parts.
-- "signals" lists short phrases (<= 6 words) found in the text that support your score.
-- Default to 0.7 (good) if the text is neutral and contains no condition cues.
-- Output JSON only, no commentary.`;
-
-const responseSchema = z.object({
-  conditionScore: z.number(),
-  conditionLabel: z.enum(['excellent', 'good', 'fair', 'poor']),
-  signals: z.array(z.string()).default([]),
-});
-
-const CACHE_LIMIT = 200;
-const cache = new Map<string, ConditionResult>();
-
-function cacheKey(input: ConditionInput): string {
-  return [
-    input.title.toLowerCase().trim(),
-    (input.description ?? '').toLowerCase().trim(),
-    input.imageUrl ? '1' : '0',
-  ].join('|');
-}
-
-function clampScore(value: number): number {
-  if (!Number.isFinite(value)) return 0.7;
-  return Math.max(0, Math.min(1, value));
-}
-
-function rememberInCache(key: string, value: ConditionResult): void {
-  if (cache.size >= CACHE_LIMIT) {
-    const oldestKey = cache.keys().next().value;
-    if (oldestKey !== undefined) cache.delete(oldestKey);
-  }
-  cache.set(key, value);
-}
+export type { ConditionInput, ConditionResult, ConditionLabel } from './conditionSchema.js';
 
 export async function analyzeCondition(input: ConditionInput): Promise<ConditionResult> {
   const openai = getOpenAiClient();
-  if (!openai) return NEUTRAL;
+  if (!openai) return NEUTRAL_CONDITION;
 
   const key = cacheKey(input);
-  const cached = cache.get(key);
+  const cached = getCachedCondition(key);
   if (cached) return cached;
 
   const model = getOpenAiModel();
@@ -79,7 +28,7 @@ export async function analyzeCondition(input: ConditionInput): Promise<Condition
       response_format: { type: 'json_object' },
       temperature: 0,
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: CONDITION_SYSTEM_PROMPT },
         useVision(input.imageUrl)
           ? {
               role: 'user',
@@ -98,25 +47,25 @@ export async function analyzeCondition(input: ConditionInput): Promise<Condition
       jsonObj = JSON.parse(raw);
     } catch {
       console.error('[condition] malformed JSON: not valid JSON');
-      return NEUTRAL;
+      return NEUTRAL_CONDITION;
     }
-    const parsed = responseSchema.safeParse(jsonObj);
-    if (!parsed.success) return NEUTRAL;
+    const parsed = conditionResponseSchema.safeParse(jsonObj);
+    if (!parsed.success) return NEUTRAL_CONDITION;
 
     const result: ConditionResult = {
       conditionScore: clampScore(parsed.data.conditionScore),
       conditionLabel: parsed.data.conditionLabel,
       signals: parsed.data.signals.slice(0, 8),
     };
-    rememberInCache(key, result);
+    rememberCondition(key, result);
     return result;
   } catch (err) {
     console.error('[condition] OpenAI call failed:', err instanceof Error ? err.message : err);
-    return NEUTRAL;
+    return NEUTRAL_CONDITION;
   }
 }
 
 export function __resetConditionCacheForTests(): void {
-  cache.clear();
+  clearConditionCache();
   __resetOpenAiClientForTests();
 }

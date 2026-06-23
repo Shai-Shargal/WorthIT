@@ -5,8 +5,8 @@ import type {
 } from '../../../shared/types/index.js';
 import { findSimilarObservations, recordObservations } from './marketObservations.js';
 import { tavilySearch } from './providers/tavily.js';
-import { describePrices, removeOutliers } from './statistics.js';
 import { extractSpecs, buildEnrichedQuery } from '../ai/specsExtractor.js';
+import { buildDataQuality, buildLocalContext, buildHistoricalContext } from './pricing/contextBuilders.js';
 
 const RECENT_WINDOW_DAYS = 90;
 const RECENT_LIMIT = 30;
@@ -20,70 +20,6 @@ export interface PriceGatheringResult {
   historicalContext: HistoricalContext;
   recentObservations: MarketObservation[];
   sources: DataSource[];
-}
-
-function round(n: number): number {
-  return Math.round(n);
-}
-
-function buildDataQuality(
-  dbCount: number,
-  tavilyCount: number,
-): 'real' | 'seed' | 'limited' | 'insufficient' {
-  if (dbCount >= TAVILY_THRESHOLD) return 'real';
-  if (dbCount === 0 && tavilyCount === 0) return 'insufficient';
-  if (dbCount === 0 && tavilyCount > 0) return 'seed';
-  return 'limited';
-}
-
-function buildLocalContext(
-  query: string,
-  currency: string,
-  observations: MarketObservation[],
-  dataQuality: 'real' | 'seed' | 'limited' | 'insufficient',
-  notes: string[],
-): LocalMarketContext {
-  const prices = observations
-    .map((o) => o.observedPrice)
-    .filter((p) => Number.isFinite(p) && p > 0);
-  const cleaned = removeOutliers(prices);
-  const usable = cleaned.length > 0 ? cleaned : prices;
-  const dist = describePrices(usable);
-
-  return {
-    query,
-    currency,
-    observationCount: observations.length,
-    dataQuality,
-    priceRange: dist ? { min: round(dist.min), max: round(dist.max) } : undefined,
-    typicalPrice: dist
-      ? { p25: round(dist.p25), p50: round(dist.p50), p75: round(dist.p75) }
-      : undefined,
-    recentObservations: observations.slice(0, RECENT_LIMIT),
-    notes,
-  };
-}
-
-function buildHistoricalContext(
-  query: string,
-  observations: MarketObservation[],
-): HistoricalContext {
-  if (observations.length === 0) {
-    return { query, totalObservations: 0, observations: [] };
-  }
-  let oldest = observations[0].timestamp;
-  let newest = observations[0].timestamp;
-  for (const o of observations) {
-    if (o.timestamp < oldest) oldest = o.timestamp;
-    if (o.timestamp > newest) newest = o.timestamp;
-  }
-  return {
-    query,
-    totalObservations: observations.length,
-    oldestTimestamp: oldest,
-    newestTimestamp: newest,
-    observations: observations.slice(0, HISTORICAL_LIMIT),
-  };
 }
 
 export async function gatherPrices(query: {
@@ -119,7 +55,11 @@ export async function gatherPrices(query: {
   if (recentDb.length < TAVILY_THRESHOLD) {
     const specs = extractSpecs(query.name, query.description);
     const enrichedName = buildEnrichedQuery(query.name, specs);
-    const tavilyObs = await tavilySearch({ name: enrichedName, currency, listingPrice: query.listingPrice }).catch((err) => {
+    const tavilyObs = await tavilySearch({
+      name: enrichedName,
+      currency,
+      listingPrice: query.listingPrice,
+    }).catch((err) => {
       console.error('[priceGathering] tavily failed:', err instanceof Error ? err.message : err);
       return [] as MarketObservation[];
     });
