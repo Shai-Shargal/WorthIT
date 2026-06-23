@@ -5,80 +5,101 @@ import { Yad2Extractor } from '../../src/marketplace/providers/yad2.js';
 const VALID_URL = 'https://www.yad2.co.il/item/abc123';
 
 /**
- * Build a minimal-but-realistic Yad2 listing HTML page.
- * Selectors here MUST match the spec in task-1-brief.md.
+ * Tavily search responses we want the extractor to parse. Mirrors the subset
+ * of fields the production code consumes (`answer`, `results[].title`,
+ * `results[].content`, `results[].snippet`, `results[].url`).
  */
-function buildYad2Html(opts: {
+interface TavilyResultFixture {
+  title?: string;
+  content?: string;
+  snippet?: string;
+  url?: string;
+}
+interface TavilyResponseFixture {
+  answer?: string;
+  results?: TavilyResultFixture[];
+}
+
+/**
+ * Build a realistic Tavily response that mentions a Yad2 listing.
+ * One Tavily request → one TavilyResponse; we usually issue two queries so
+ * the extractor sees an array of two responses. The mock returns the same
+ * payload for every call by default — override per-test with mockFetchSequence.
+ */
+function buildTavilyFixture(opts: {
   title?: string;
   price?: string;
   description?: string;
   sellerName?: string;
-  sellerHref?: string;
-  images?: string[];
+  sellerUrl?: string;
+  answerExtra?: string;
   date?: string;
-  dateAttr?: string;
-  useDataTestId?: boolean;
-} = {}): string {
+} = {}): TavilyResponseFixture {
   const {
-    title = 'iPhone 13 Pro 256GB',
+    title = 'iPhone 13 Pro 256GB on Yad2',
     price = '₪ 2,500',
-    description = 'מצב מעולה, סוללה 95%',
-    sellerName = 'דני',
-    sellerHref = '/profile/danny',
-    images = [
-      'https://img.yad2.co.il/listing/abc/1.jpg',
-      'https://img.yad2.co.il/listing/abc/2.jpg',
-    ],
+    description = 'מצב מעולה, סוללה 95% — iPhone 13 Pro 256GB באחריות.',
+    sellerName = 'Danny',
+    sellerUrl = 'https://www.yad2.co.il/profile/danny',
+    answerExtra = '',
     date = '15/06/2026',
-    dateAttr = '2026-06-15T10:00:00Z',
-    useDataTestId = false,
   } = opts;
 
-  const titleEl = useDataTestId
-    ? `<div data-testid="item-title">${title}</div>`
-    : `<h1 class="item-title">${title}</h1>`;
-  const priceEl = useDataTestId
-    ? `<div data-testid="price">${price}</div>`
-    : `<span class="price-value">${price}</span>`;
-  const sellerEl = useDataTestId
-    ? `<a data-testid="seller-profile" href="${sellerHref}">${sellerName}</a>`
-    : `<a class="seller-name" href="${sellerHref}">${sellerName}</a>`;
-  const dateEl = useDataTestId
-    ? `<time datetime="${dateAttr}">${date}</time>`
-    : `<span class="posted-date">${date}</span>`;
-  const imgEls = images.map((src) => `<img class="item-image" src="${src}" />`).join('\n');
-
-  return `
-    <html>
-      <body>
-        ${titleEl}
-        ${priceEl}
-        <div class="item-description">${description}</div>
-        ${sellerEl}
-        ${imgEls}
-        ${dateEl}
-      </body>
-    </html>
-  `;
+  return {
+    answer: `Listing posted ${date}. Price: ${price}. ${answerExtra}`.trim(),
+    results: [
+      {
+        title,
+        content: `${description} מחיר ${price}. Posted ${date}.`,
+        url: sellerUrl,
+        snippet: `by ${sellerName}`,
+      },
+    ],
+  };
 }
 
-function mockFetchOnceWithHtml(html: string, status = 200): void {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok: status >= 200 && status < 300,
-      status,
-      text: async () => html,
-    }),
-  );
+/**
+ * Make `fetch` return the same Tavily payload for every call.
+ * The extractor issues two queries — both get the same response.
+ */
+function mockTavilyFetchAlways(payload: TavilyResponseFixture | undefined, status = 200): ReturnType<typeof vi.fn> {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => payload,
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
+/** Sequence-based fetch mock for tests that want different responses per call. */
+function mockTavilyFetchSequence(
+  responses: Array<{ payload?: TavilyResponseFixture; status?: number; error?: Error }>,
+): ReturnType<typeof vi.fn> {
+  const fetchMock = vi.fn();
+  for (const r of responses) {
+    if (r.error) {
+      fetchMock.mockRejectedValueOnce(r.error);
+    } else {
+      fetchMock.mockResolvedValueOnce({
+        ok: (r.status ?? 200) >= 200 && (r.status ?? 200) < 300,
+        status: r.status ?? 200,
+        json: async () => r.payload,
+      });
+    }
+  }
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  process.env.TAVILY_API_KEY = 'test-key';
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  delete process.env.TAVILY_API_KEY;
 });
 
 describe('Yad2Extractor', () => {
@@ -106,34 +127,46 @@ describe('Yad2Extractor', () => {
     });
   });
 
+  describe('extractProductId', () => {
+    it('returns the slug for /item/<id> and undefined for garbage', () => {
+      const x = new Yad2Extractor();
+      expect(x.extractProductId('https://www.yad2.co.il/item/abc123')).toBe('abc123');
+      expect(x.extractProductId('not a url')).toBeUndefined();
+    });
+  });
+
   describe('extractListing — happy path', () => {
-    it('extracts every field from a well-formed Yad2 page', async () => {
-      mockFetchOnceWithHtml(buildYad2Html());
+    it('extracts title, price, description, seller and date from Tavily results', async () => {
+      mockTavilyFetchAlways(buildTavilyFixture());
       const x = new Yad2Extractor();
       const result = await x.extractListing(VALID_URL);
 
-      expect(result.title).toBe('iPhone 13 Pro 256GB');
+      expect(result.title).toBe('iPhone 13 Pro 256GB on Yad2');
       expect(result.price).toBe(2500);
       expect(result.currency).toBe('ILS');
-      expect(result.description).toBe('מצב מעולה, סוללה 95%');
-      expect(result.seller?.name).toBe('דני');
+      expect(result.description).toContain('iPhone 13 Pro 256GB');
+      expect(result.seller?.name).toBe('Danny');
       expect(result.seller?.profileUrl).toContain('/profile/danny');
-      expect(result.images).toHaveLength(2);
-      expect(result.images[0]).toBe('https://img.yad2.co.il/listing/abc/1.jpg');
       expect(result.postedDate).toBeInstanceOf(Date);
       expect(result.url).toBe(VALID_URL);
       expect(result.marketplace).toBe('yad2');
+      // Tavily snippets don't reliably surface image URLs → empty array.
+      expect(result.images).toEqual([]);
     });
 
-    it('falls back to data-testid selectors when primary class selectors absent', async () => {
-      mockFetchOnceWithHtml(buildYad2Html({ useDataTestId: true }));
+    it('picks the median price when snippets mention multiple ILS amounts', async () => {
+      const payload: TavilyResponseFixture = {
+        answer: 'Range observed: ₪2,300 – ₪2,800 across listings.',
+        results: [
+          { title: 'iPhone 13 Yad2', content: 'iPhone 13 listed at ₪2,500', url: 'https://www.yad2.co.il/profile/x' },
+          { title: 'iPhone 13 comparison', content: 'similar models go for ₪2,400 and ₪2,600', url: 'https://x' },
+        ],
+      };
+      mockTavilyFetchAlways(payload);
       const x = new Yad2Extractor();
       const result = await x.extractListing(VALID_URL);
-
-      expect(result.title).toBe('iPhone 13 Pro 256GB');
+      // Sorted prices across both queries (duplicated): 2300,2300,2400,2400,2500,2500,2600,2600,2800,2800 → median 2500.
       expect(result.price).toBe(2500);
-      expect(result.seller?.name).toBe('דני');
-      expect(result.postedDate).toBeInstanceOf(Date);
     });
   });
 
@@ -143,79 +176,88 @@ describe('Yad2Extractor', () => {
       await expect(x.extractListing('https://example.com/foo')).rejects.toThrow();
     });
 
-    it('returns price=0 when price markup is malformed', async () => {
-      const html = buildYad2Html({ price: 'price on request' });
-      mockFetchOnceWithHtml(html);
+    it('returns price=0 when Tavily snippets contain no recognizable price', async () => {
+      mockTavilyFetchAlways({
+        answer: 'price on request',
+        results: [{ title: 'Yad2 listing', content: 'no price quoted here', url: 'https://x' }],
+      });
       const x = new Yad2Extractor();
       const result = await x.extractListing(VALID_URL);
       expect(result.price).toBe(0);
     });
 
-    it('returns empty images array when gallery is missing', async () => {
-      const html = buildYad2Html({ images: [] });
-      mockFetchOnceWithHtml(html);
-      const x = new Yad2Extractor();
-      const result = await x.extractListing(VALID_URL);
-      expect(result.images).toEqual([]);
-    });
-
-    it('returns undefined for optional fields when DOM lacks them', async () => {
-      const html = `
-        <html><body>
-          <h1 class="item-title">Bare Listing</h1>
-          <span class="price-value">₪ 100</span>
-        </body></html>
-      `;
-      mockFetchOnceWithHtml(html);
+    it('returns partial listing when Tavily returns zero results', async () => {
+      mockTavilyFetchAlways({ answer: '', results: [] });
       const x = new Yad2Extractor();
       const result = await x.extractListing(VALID_URL);
 
-      expect(result.title).toBe('Bare Listing');
-      expect(result.price).toBe(100);
+      // No usable data → title falls back to the product id, optional fields undefined.
+      expect(result.title).toBe('abc123');
+      expect(result.price).toBe(0);
       expect(result.description).toBeUndefined();
       expect(result.seller).toBeUndefined();
       expect(result.postedDate).toBeUndefined();
       expect(result.images).toEqual([]);
+      expect(result.marketplace).toBe('yad2');
     });
 
-    it('returns title="" and price=0 on completely malformed HTML rather than crashing', async () => {
-      mockFetchOnceWithHtml('<html><body><div>nothing useful</div></body></html>');
+    it('returns partial listing when Tavily HTTP fails twice (one per query)', async () => {
+      mockTavilyFetchSequence([
+        { status: 503 },
+        { status: 503 },
+      ]);
       const x = new Yad2Extractor();
       const result = await x.extractListing(VALID_URL);
-      expect(result.title).toBe('');
+      expect(result.title).toBe('abc123');
+      expect(result.price).toBe(0);
+    });
+
+    it('returns partial listing when fetch throws (network error / timeout)', async () => {
+      mockTavilyFetchSequence([
+        { error: new Error('network down') },
+        { error: new Error('network down') },
+      ]);
+      const x = new Yad2Extractor();
+      const result = await x.extractListing(VALID_URL);
+      expect(result.title).toBe('abc123');
       expect(result.price).toBe(0);
       expect(result.images).toEqual([]);
     });
 
-    it('retries once on fetch timeout, then succeeds', async () => {
-      const html = buildYad2Html();
-      const fetchMock = vi.fn()
-        .mockRejectedValueOnce(new Error('timeout'))
-        .mockResolvedValueOnce({ ok: true, status: 200, text: async () => html });
+    it('returns partial listing when TAVILY_API_KEY is missing', async () => {
+      delete process.env.TAVILY_API_KEY;
+      const fetchMock = vi.fn();
       vi.stubGlobal('fetch', fetchMock);
 
       const x = new Yad2Extractor();
       const result = await x.extractListing(VALID_URL);
-      expect(result.title).toBe('iPhone 13 Pro 256GB');
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      expect(result.title).toBe('abc123');
+      expect(result.price).toBe(0);
+      // No API key → must not have hit the network.
+      expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it('throws after second fetch failure', async () => {
-      const fetchMock = vi.fn().mockRejectedValue(new Error('timeout'));
-      vi.stubGlobal('fetch', fetchMock);
-
+    it('issues exactly two Tavily queries (English + Hebrew) per call', async () => {
+      const fetchMock = mockTavilyFetchAlways(buildTavilyFixture());
       const x = new Yad2Extractor();
-      await expect(x.extractListing(VALID_URL)).rejects.toThrow();
+      await x.extractListing(VALID_URL);
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
+  });
 
-    it('throws when fetch returns non-OK twice', async () => {
-      const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503, text: async () => '' });
-      vi.stubGlobal('fetch', fetchMock);
-
+  describe('parseTavilyResults', () => {
+    it('falls back to the product id when no titles look usable', () => {
       const x = new Yad2Extractor();
-      await expect(x.extractListing(VALID_URL)).rejects.toThrow();
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const result = x.parseTavilyResults(
+        [{ answer: '', results: [{ title: 'Yad2', content: '₪500', url: 'https://x' }] }],
+        VALID_URL,
+        'abc123',
+      );
+      // Bare "Yad2" titles are filtered → fallback to productId.
+      expect(result.title).toBe('abc123');
+      expect(result.price).toBe(500);
+      expect(result.marketplace).toBe('yad2');
     });
   });
 
@@ -242,15 +284,6 @@ describe('Yad2Extractor', () => {
       const x = new Yad2Extractor();
       expect(x.parseDate('not a date')).toBeUndefined();
       expect(x.parseDate('')).toBeUndefined();
-    });
-  });
-
-  describe('fetchPage', () => {
-    it('returns the body text on success', async () => {
-      mockFetchOnceWithHtml('<html>hi</html>');
-      const x = new Yad2Extractor();
-      const html = await x.fetchPage(VALID_URL);
-      expect(html).toContain('<html>hi</html>');
     });
   });
 });
