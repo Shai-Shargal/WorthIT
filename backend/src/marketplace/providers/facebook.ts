@@ -3,21 +3,25 @@ import * as cheerio from 'cheerio';
 import type { IMarketplaceExtractor, RawListing, RawSeller } from '../IMarketplaceExtractor.js';
 
 /**
- * Yad2 (yad2.co.il) listing extractor.
+ * Facebook Marketplace listing extractor.
  *
- * Fetches a Yad2 item page over HTTP, parses the static HTML with cheerio,
- * and returns a normalized {@link RawListing}.
+ * Fetches a Facebook Marketplace item page over HTTP, parses the static HTML
+ * with cheerio, and returns a normalized {@link RawListing}.
  *
  * Notes:
- * - Yad2 pages are partially hydrated client-side. This extractor reads the
- *   server-rendered HTML only; if a required field comes back missing for a
- *   live URL, we log a JS-rendered-content warning and return partial data
- *   instead of throwing (per Phase 2 brief).
+ * - Facebook Marketplace is heavily JS-rendered and bot-blocked. This
+ *   extractor reads server-rendered HTML (Open Graph meta + a few public
+ *   selectors) only. For a logged-in scrape with full DOM access, the Chrome
+ *   extension content-script remains the canonical Phase 1 path; this
+ *   extractor exists for backend-driven URL ingestion (Phase 2 alignment
+ *   with {@link Yad2Extractor}).
+ * - When the static HTML yields nothing useful we log a warning and return
+ *   a partial RawListing instead of throwing, so the caller can fall back.
  * - One retry (10s timeout) on network failure or non-2xx, then we throw.
  */
 
-const YAD2_HOST_REGEX = /^(?:www\.)?yad2\.co\.il$/i;
-const YAD2_ITEM_PATH_PREFIX = '/item/';
+const FACEBOOK_HOST_REGEX = /^(?:[\w-]+\.)*facebook\.com$/i;
+const FACEBOOK_MARKETPLACE_PATH_PREFIX = '/marketplace/item/';
 const FETCH_TIMEOUT_INITIAL_MS = 5_000;
 const FETCH_TIMEOUT_RETRY_MS = 10_000;
 
@@ -28,6 +32,20 @@ function parsePriceText(text: string | undefined): number {
   if (!match) return 0;
   const n = Number.parseFloat(match[1]);
   return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+/**
+ * Best-effort currency detection from a price string. Facebook localizes
+ * prices to the viewing region, so we look for common symbols/codes and
+ * default to USD when nothing is recognizable.
+ */
+function parseCurrency(text: string | undefined): string {
+  if (!text) return 'USD';
+  if (/\bILS\b|₪|שח/i.test(text)) return 'ILS';
+  if (/\bEUR\b|€/.test(text)) return 'EUR';
+  if (/\bGBP\b|£/.test(text)) return 'GBP';
+  if (/\bUSD\b|\$/.test(text)) return 'USD';
+  return 'USD';
 }
 
 /** Pick the first non-empty trimmed text from a list of cheerio selectors. */
@@ -44,9 +62,23 @@ function firstText(
   return undefined;
 }
 
-export class Yad2Extractor implements IMarketplaceExtractor {
+/** Pick the first non-empty attribute value across a list of selectors. */
+function firstAttr(
+  $: cheerio.CheerioAPI,
+  selectors: Array<[selector: string, attr: string]>,
+): string | undefined {
+  for (const [sel, attr] of selectors) {
+    const el = $(sel).first();
+    if (el.length === 0) continue;
+    const v = el.attr(attr);
+    if (v && v.trim()) return v.trim();
+  }
+  return undefined;
+}
+
+export class FacebookExtractor implements IMarketplaceExtractor {
   /**
-   * Static form of {@link Yad2Extractor.validateUrl} so the
+   * Static form of {@link FacebookExtractor.validateUrl} so the
    * {@link MarketplaceExtractorFactory} can route a URL without
    * instantiating every extractor. The instance method delegates here so
    * both forms stay in sync.
@@ -59,12 +91,12 @@ export class Yad2Extractor implements IMarketplaceExtractor {
     } catch {
       return false;
     }
-    if (!YAD2_HOST_REGEX.test(parsed.hostname)) return false;
-    return parsed.pathname.startsWith(YAD2_ITEM_PATH_PREFIX);
+    if (!FACEBOOK_HOST_REGEX.test(parsed.hostname)) return false;
+    return parsed.pathname.startsWith(FACEBOOK_MARKETPLACE_PATH_PREFIX);
   }
 
   validateUrl(url: string): boolean {
-    return Yad2Extractor.validateUrl(url);
+    return FacebookExtractor.validateUrl(url);
   }
 
   /**
@@ -78,15 +110,14 @@ export class Yad2Extractor implements IMarketplaceExtractor {
       const response = await fetch(url, {
         signal: controller.signal,
         headers: {
-          // Yad2 returns a stripped page to obvious bots; mimic a browser UA.
           'User-Agent':
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
           Accept: 'text/html,application/xhtml+xml',
-          'Accept-Language': 'he-IL,he;q=0.9,en;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
         },
       });
       if (!response.ok) {
-        throw new Error(`Yad2 fetch failed: HTTP ${response.status}`);
+        throw new Error(`Facebook fetch failed: HTTP ${response.status}`);
       }
       return await response.text();
     } finally {
@@ -95,39 +126,27 @@ export class Yad2Extractor implements IMarketplaceExtractor {
   }
 
   /**
-   * Parse a date string. Supports ISO-8601 (from `time[datetime]`) and the
-   * `DD/MM/YYYY` Israeli format found in posted-date spans.
+   * Parse a date string. Supports ISO-8601 (the standard format used in
+   * Open Graph `article:published_time` meta tags) and falls back to
+   * `Date` constructor parsing for anything else.
    */
   parseDate(dateStr: string | undefined | null): Date | undefined {
     if (!dateStr) return undefined;
     const trimmed = dateStr.trim();
     if (!trimmed) return undefined;
 
-    // ISO-ish (has T or starts with YYYY-)
     if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
       const d = new Date(trimmed);
       return Number.isNaN(d.getTime()) ? undefined : d;
     }
 
-    // DD/MM/YYYY or DD.MM.YYYY
-    const m = trimmed.match(/^(\d{1,2})[./](\d{1,2})[./](\d{2,4})$/);
-    if (m) {
-      const day = Number.parseInt(m[1], 10);
-      const month = Number.parseInt(m[2], 10) - 1;
-      let year = Number.parseInt(m[3], 10);
-      if (year < 100) year += 2000;
-      const d = new Date(year, month, day);
-      return Number.isNaN(d.getTime()) ? undefined : d;
-    }
-
-    // Last-ditch attempt — let Date try.
     const d = new Date(trimmed);
     return Number.isNaN(d.getTime()) ? undefined : d;
   }
 
   async extractListing(url: string): Promise<RawListing> {
     if (!this.validateUrl(url)) {
-      throw new Error(`Yad2Extractor: invalid Yad2 URL: ${url}`);
+      throw new Error(`FacebookExtractor: invalid Facebook Marketplace URL: ${url}`);
     }
 
     const html = await this.fetchWithRetry(url);
@@ -140,14 +159,14 @@ export class Yad2Extractor implements IMarketplaceExtractor {
       return await this.fetchPage(url, FETCH_TIMEOUT_INITIAL_MS);
     } catch (firstErr) {
       console.warn(
-        '[yad2] first fetch failed, retrying:',
+        '[facebook] first fetch failed, retrying:',
         firstErr instanceof Error ? firstErr.message : firstErr,
       );
       try {
         return await this.fetchPage(url, FETCH_TIMEOUT_RETRY_MS);
       } catch (secondErr) {
         throw new Error(
-          `Yad2Extractor: fetch failed twice for ${url}: ${
+          `FacebookExtractor: fetch failed twice for ${url}: ${
             secondErr instanceof Error ? secondErr.message : String(secondErr)
           }`,
         );
@@ -161,26 +180,40 @@ export class Yad2Extractor implements IMarketplaceExtractor {
 
     const title =
       this.safeExtract('title', () =>
-        firstText($, ['h1.item-title', '[data-testid="item-title"]']) ?? '',
+        firstAttr($, [
+          ['meta[property="og:title"]', 'content'],
+          ['meta[name="twitter:title"]', 'content'],
+        ]) ?? firstText($, ['h1']) ?? '',
       ) ?? '';
 
     const priceText = this.safeExtract('price', () =>
-      firstText($, ['span.price-value', '[data-testid="price"]']),
+      firstAttr($, [
+        ['meta[property="product:price:amount"]', 'content'],
+        ['meta[property="og:price:amount"]', 'content'],
+      ]) ?? firstText($, ['[data-testid="marketplace-pdp-price"]', 'span[aria-label*="price" i]']),
     );
     const price = parsePriceText(priceText);
 
+    const currency = this.safeExtract('currency', () =>
+      firstAttr($, [
+        ['meta[property="product:price:currency"]', 'content'],
+        ['meta[property="og:price:currency"]', 'content'],
+      ]),
+    ) ?? parseCurrency(priceText);
+
     const description = this.safeExtract('description', () =>
-      firstText($, ['div.item-description', 'p.item-text']),
+      firstAttr($, [
+        ['meta[property="og:description"]', 'content'],
+        ['meta[name="description"]', 'content'],
+      ]) ?? firstText($, ['[data-testid="marketplace-pdp-description"]']),
     );
 
     const seller = this.safeExtract<RawSeller | undefined>('seller', () => {
-      const el = $('a.seller-name').first().length
-        ? $('a.seller-name').first()
-        : $('[data-testid="seller-profile"]').first();
-      if (el.length === 0) return undefined;
-      const name = el.text().trim();
+      const link = $('a[href*="/marketplace/profile/"]').first();
+      if (link.length === 0) return undefined;
+      const name = link.text().trim();
       if (!name) return undefined;
-      const href = el.attr('href');
+      const href = link.attr('href');
       return {
         name,
         profileUrl: href ? this.resolveUrl(href, url) : undefined,
@@ -189,25 +222,31 @@ export class Yad2Extractor implements IMarketplaceExtractor {
 
     const images = this.safeExtract<string[]>('images', () => {
       const out: string[] = [];
-      $('img.item-image').each((_, el) => {
+      const seen = new Set<string>();
+      $('meta[property="og:image"]').each((_, el) => {
+        const src = $(el).attr('content');
+        if (src && !seen.has(src)) {
+          out.push(src);
+          seen.add(src);
+        }
+      });
+      $('img[src*="scontent"], [data-testid="marketplace-pdp-image"] img').each((_, el) => {
         const src = $(el).attr('src');
-        if (src) out.push(src);
+        if (src && !seen.has(src)) {
+          out.push(src);
+          seen.add(src);
+        }
       });
       return out;
     }) ?? [];
 
     const postedDate = this.safeExtract<Date | undefined>('postedDate', () => {
-      const timeEl = $('time[datetime]').first();
-      if (timeEl.length > 0) {
-        const attr = timeEl.attr('datetime');
-        const parsed = this.parseDate(attr);
-        if (parsed) return parsed;
-      }
-      const span = $('span.posted-date').first();
-      if (span.length > 0) {
-        return this.parseDate(span.text());
-      }
-      return undefined;
+      const isoAttr = firstAttr($, [
+        ['meta[property="article:published_time"]', 'content'],
+        ['meta[property="og:updated_time"]', 'content'],
+        ['time[datetime]', 'datetime'],
+      ]);
+      return this.parseDate(isoAttr);
     });
 
     // If the static page yielded nothing useful, the listing was likely
@@ -215,7 +254,7 @@ export class Yad2Extractor implements IMarketplaceExtractor {
     // to the extension DOM extractor.
     if (!title && price === 0 && images.length === 0) {
       console.warn(
-        '[yad2] static HTML looked empty — page may be JS-rendered:',
+        '[facebook] static HTML looked empty — page may be JS-rendered or bot-blocked:',
         url,
       );
     }
@@ -223,13 +262,13 @@ export class Yad2Extractor implements IMarketplaceExtractor {
     return {
       title,
       price,
-      currency: 'ILS',
+      currency,
       description,
       seller,
       images,
       postedDate,
       url,
-      marketplace: 'yad2',
+      marketplace: 'facebook',
     };
   }
 
@@ -242,7 +281,7 @@ export class Yad2Extractor implements IMarketplaceExtractor {
       return fn();
     } catch (err) {
       console.warn(
-        `[yad2] failed to extract ${field}:`,
+        `[facebook] failed to extract ${field}:`,
         err instanceof Error ? err.message : err,
       );
       return undefined;

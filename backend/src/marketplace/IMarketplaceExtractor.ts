@@ -5,36 +5,16 @@
  * so the analyzer pipeline can pull a normalized {@link RawListing} from a URL
  * without caring about marketplace-specific DOM structure or APIs.
  *
- * Defined here (Backend Task 1) ahead of the factory in Backend Task 3.
+ * The {@link MarketplaceExtractorFactory} (Backend Task 3) routes a URL to
+ * the correct concrete extractor.
  */
 
-export type Marketplace = 'facebook' | 'yad2';
+import type { Marketplace, RawListing, RawSeller } from './types/RawListing.js';
 
-/**
- * Minimal seller info scraped from a listing page.
- * profileUrl is optional because some marketplaces hide it for guest scrapers.
- */
-export interface RawSeller {
-  name: string;
-  profileUrl?: string;
-}
-
-/**
- * Normalized listing scraped from a marketplace page.
- * Optional fields are returned as `undefined` (NOT thrown) when the source
- * page is missing them — see edge case rules in the Phase 2 brief.
- */
-export interface RawListing {
-  title: string;
-  price: number;
-  currency: string;
-  description?: string;
-  seller?: RawSeller;
-  images: string[];
-  postedDate?: Date;
-  url: string;
-  marketplace: Marketplace;
-}
+// Re-export the listing types so existing call-sites that import them from
+// this file (e.g. `import type { RawListing } from '.../IMarketplaceExtractor.js'`)
+// keep working. New code should prefer `./types/RawListing.js` directly.
+export type { Marketplace, RawListing, RawSeller };
 
 export interface IMarketplaceExtractor {
   /**
@@ -46,7 +26,11 @@ export interface IMarketplaceExtractor {
 
   /**
    * Pure URL check — does this extractor recognize the URL as one it can
-   * handle? Used by the factory in Backend Task 3.
+   * handle? Used by the {@link MarketplaceExtractorFactory}.
+   *
+   * Implementations should also expose a `static validateUrl(url)` with the
+   * same logic so the factory can route without instantiating every
+   * extractor. Both forms must agree.
    */
   validateUrl(url: string): boolean;
 }
