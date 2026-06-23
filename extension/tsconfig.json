@@ -15,5 +15,5 @@
       "@shared/*": ["../shared/*"]
     }
   },
-  "include": ["src/**/*", "../shared/**/*", "manifest.config.ts", "vite.config.ts"]
+  "include": ["src/**/*", "tests/**/*", "../shared/**/*", "manifest.config.ts", "vite.config.ts", "vitest.config.ts"]
 }
