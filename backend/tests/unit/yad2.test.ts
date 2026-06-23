@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { Yad2Extractor } from '../../src/marketplace/providers/yad2.js';
+import { Yad2Extractor } from '../../src/marketplace/providers/yad2/index.js';
 
 const VALID_URL = 'https://www.yad2.co.il/item/abc123';
 

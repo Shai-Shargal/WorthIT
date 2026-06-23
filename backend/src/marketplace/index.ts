@@ -12,5 +12,5 @@ export type {
   RawSeller,
 } from './types/RawListing.js';
 export { MarketplaceExtractorFactory } from './MarketplaceExtractorFactory.js';
-export { FacebookExtractor } from './providers/facebook.js';
-export { Yad2Extractor } from './providers/yad2.js';
+export { FacebookExtractor } from './providers/facebook/index.js';
+export { Yad2Extractor } from './providers/yad2/index.js';

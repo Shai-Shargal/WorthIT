@@ -1,6 +1,6 @@
 import type { IMarketplaceExtractor } from './IMarketplaceExtractor.js';
-import { FacebookExtractor } from './providers/facebook.js';
-import { Yad2Extractor } from './providers/yad2.js';
+import { FacebookExtractor } from './providers/facebook/index.js';
+import { Yad2Extractor } from './providers/yad2/index.js';
 
 /**
  * Routes a marketplace listing URL to the concrete
