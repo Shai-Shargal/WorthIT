@@ -18,7 +18,8 @@ import type { IMarketplaceExtractor, RawListing, RawSeller } from '../IMarketpla
 
 const YAD2_HOST_REGEX = /^(?:www\.)?yad2\.co\.il$/i;
 const YAD2_ITEM_PATH_PREFIX = '/item/';
-const FETCH_TIMEOUT_MS = 10_000;
+const FETCH_TIMEOUT_INITIAL_MS = 5_000;
+const FETCH_TIMEOUT_RETRY_MS = 10_000;
 
 /** Extract the first numeric run from a string. Returns 0 if none. */
 function parsePriceText(text: string | undefined): number {
@@ -60,9 +61,9 @@ export class Yad2Extractor implements IMarketplaceExtractor {
    * Fetch the listing page HTML. Throws on network/HTTP failure — caller is
    * responsible for retry policy.
    */
-  async fetchPage(url: string): Promise<string> {
+  async fetchPage(url: string, timeoutMs: number = FETCH_TIMEOUT_INITIAL_MS): Promise<string> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(url, {
         signal: controller.signal,
@@ -126,14 +127,14 @@ export class Yad2Extractor implements IMarketplaceExtractor {
   /** Fetch with a single retry. Throws if both attempts fail. */
   private async fetchWithRetry(url: string): Promise<string> {
     try {
-      return await this.fetchPage(url);
+      return await this.fetchPage(url, FETCH_TIMEOUT_INITIAL_MS);
     } catch (firstErr) {
       console.warn(
         '[yad2] first fetch failed, retrying:',
         firstErr instanceof Error ? firstErr.message : firstErr,
       );
       try {
-        return await this.fetchPage(url);
+        return await this.fetchPage(url, FETCH_TIMEOUT_RETRY_MS);
       } catch (secondErr) {
         throw new Error(
           `Yad2Extractor: fetch failed twice for ${url}: ${
