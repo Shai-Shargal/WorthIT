@@ -84,7 +84,7 @@
 
 **Trade-off if prioritizing:** Launch Phase 2 with 3 features, add market intelligence after feedback.
 
-**Status:** ⏳ **PENDING YOUR CONFIRMATION**
+**Status:** LOCKED ✅ (2026-06-23)
 
 ---
 
@@ -148,7 +148,7 @@ class FeatureEngine {
 - Option B: good confidence, reasonable speed (recommended)
 - Option C: faster ship, lower confidence (riskier)
 
-**Status:** ⏳ **PENDING QA INPUT + YOUR DECISION**
+**Status:** LOCKED ✅ (2026-06-23)
 
 ---
 
@@ -170,7 +170,37 @@ class FeatureEngine {
 - Option 2: zero latency, lower accuracy initially (improves over time)
 - Option 3: balanced, more complex code
 
-**Status:** ⏳ **BLOCKED on Product + Backend assessment**
+**Decision:** **Hybrid Approach**
+
+Start with seller observation history for instant trust scores. Add live profile scraping as secondary source if history is insufficient (< 3 observations).
+
+**Owner:** Backend Agent (implementation) + Product Agent (spec)
+
+**Reasoning:**
+- Instant response (no latency hit from scraping)
+- Accuracy improves over time as we observe more sellers
+- If history insufficient, fallback to live scrape (fresh data)
+- Low risk: falls back gracefully
+
+**Implementation:**
+```typescript
+// Pseudocode
+function getSellerTrust(sellerName: string): TrustScore {
+  const history = db.getSellerObservations(sellerName); // past listings
+  if (history.length >= 3) {
+    return calculateTrustFromHistory(history); // instant, cached
+  }
+  // Fallback: scrape current profile
+  const profile = await scrapeFacebookProfile(sellerName);
+  return calculateTrustFromProfile(profile);
+}
+```
+
+**Trade-off Accepted:**
+- ⚠️ First-time sellers have no history → must scrape (adds latency for new sellers)
+- ✅ Benefit: Instant for repeat sellers (common case), no scraping for repeat analysis
+
+**Status:** LOCKED ✅ (2026-06-23)
 
 ---
 
