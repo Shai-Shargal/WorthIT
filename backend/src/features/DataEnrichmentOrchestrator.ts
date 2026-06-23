@@ -219,6 +219,7 @@ function takeFulfilled<T>(
   if (outcome.status === 'fulfilled') return outcome.value;
   const reason =
     outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
+  console.warn(`[DataEnrichmentOrchestrator] ${label} failed: ${reason}`);
   failureReasons.push(reason.startsWith(label) ? reason : `${label}: ${reason}`);
   return null;
 }

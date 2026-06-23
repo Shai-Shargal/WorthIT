@@ -2,11 +2,10 @@ import { getOpenAiClient, getOpenAiModel, useVision } from './client.js';
 import { SYSTEM_PROMPT, buildUserPrompt } from './analysisPrompt.js';
 import { analysisSchema, FALLBACK_RESULT } from './analysisSchema.js';
 
-export type { AiAnalysisInput } from './analysisPrompt.js';
-export type { AiAnalysisResult } from './analysisSchema.js';
-
 import type { AiAnalysisInput } from './analysisPrompt.js';
 import type { AiAnalysisResult } from './analysisSchema.js';
+
+export type { AiAnalysisInput, AiAnalysisResult };
 
 export async function runAiAnalysis(input: AiAnalysisInput): Promise<AiAnalysisResult> {
   const openai = getOpenAiClient();

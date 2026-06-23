@@ -9,13 +9,13 @@ const RECENT_LIMIT = 30;
 const HISTORICAL_LIMIT = 50;
 const TAVILY_THRESHOLD = 5;
 
-export type DataQuality = 'real' | 'seed' | 'limited' | 'insufficient';
+export type PriceDataQualityLevel = 'real' | 'seed' | 'limited' | 'insufficient';
 
 function round(n: number): number {
   return Math.round(n);
 }
 
-export function buildDataQuality(dbCount: number, tavilyCount: number): DataQuality {
+export function buildDataQuality(dbCount: number, tavilyCount: number): PriceDataQualityLevel {
   if (dbCount >= TAVILY_THRESHOLD) return 'real';
   if (dbCount === 0 && tavilyCount === 0) return 'insufficient';
   if (dbCount === 0 && tavilyCount > 0) return 'seed';
@@ -26,7 +26,7 @@ export function buildLocalContext(
   query: string,
   currency: string,
   observations: MarketObservation[],
-  dataQuality: DataQuality,
+  dataQuality: PriceDataQualityLevel,
   notes: string[],
 ): LocalMarketContext {
   const prices = observations
