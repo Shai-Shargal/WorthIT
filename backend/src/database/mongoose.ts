@@ -23,7 +23,8 @@ export async function connectMongo(): Promise<void> {
     mongoose.set('strictQuery', false);
 
     await mongoose.connect(mongoUri, {
-      serverSelectionTimeoutMS: 3000,
+      serverSelectionTimeoutMS: 10000,
+      connectTimeoutMS: 10000,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown MongoDB error';
