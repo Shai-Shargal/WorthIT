@@ -1,5 +1,6 @@
 import { ListingModel, LISTING_PRICE_HISTORY_CAP } from '../database/models/Listing.js';
 import { isMongoReady } from '../database/mongoose.js';
+import type { MarketObservation } from '../../../shared/types/index.js';
 
 /**
  * Inbound observation, post-validation. Mirrors the extension's
@@ -153,4 +154,83 @@ function isDuplicateKeyError(err: unknown): boolean {
     'code' in err &&
     (err as { code?: number }).code === 11000
   );
+}
+
+// ---------------------------------------------------------------------------
+// Query helpers
+// ---------------------------------------------------------------------------
+
+function toKeywords(name: string): string[] {
+  return name
+    .toLowerCase()
+    .normalize('NFKC')
+    .split(/[^\p{L}\p{N}]+/u)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 3);
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function daysAgo(days: number): Date {
+  return new Date(Date.now() - Math.max(0, days) * 24 * 60 * 60 * 1000);
+}
+
+export interface ListingQuery {
+  name: string;
+  currency: string;
+  sinceDays?: number;
+  limit?: number;
+}
+
+/**
+ * Find listings from the passive-collection `Listing` collection that match
+ * the given product name keywords, returning them as `MarketObservation`
+ * objects so the price-gathering pipeline can consume them without changes.
+ *
+ * Source is set to `'facebook-passive'` to distinguish real collected prices
+ * from Tavily estimates. These are treated as `real` quality data.
+ */
+export async function findSimilarListings(query: ListingQuery): Promise<MarketObservation[]> {
+  if (!isMongoReady()) return [];
+
+  const keywords = toKeywords(query.name);
+  if (keywords.length === 0) return [];
+
+  const since = typeof query.sinceDays === 'number' ? daysAgo(query.sinceDays) : undefined;
+  const limit = Math.max(1, Math.min(500, query.limit ?? 100));
+
+  const filter: Record<string, unknown> = {
+    currency: query.currency.toUpperCase(),
+    // Only active listings seen within the requested window
+    ...(since ? { lastSeenAt: { $gte: since } } : {}),
+    // All keywords must appear in the title (case-insensitive)
+    $and: keywords.map((kw) => ({
+      title: { $regex: escapeRegex(kw), $options: 'i' },
+    })),
+  };
+
+  try {
+    const docs = await ListingModel.find(filter)
+      .sort({ lastSeenAt: -1 })
+      .limit(limit)
+      .lean()
+      .exec();
+
+    return docs.map((doc) => ({
+      productName: doc.title,
+      observedPrice: doc.currentPrice,
+      currency: doc.currency,
+      source: 'facebook-passive',
+      location: doc.location,
+      timestamp: doc.lastSeenAt,
+    })) as MarketObservation[];
+  } catch (err) {
+    console.error(
+      '[listings.findSimilarListings] failed:',
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
 }
