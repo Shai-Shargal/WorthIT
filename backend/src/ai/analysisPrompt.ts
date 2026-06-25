@@ -42,14 +42,16 @@ RED FLAGS — if any of the following are detected, add them to concerns and red
 - Functional issues hinted ("לא תמיד עולה", intermittent problems)
 - Vague title designed to hide details in description ("כנסו לתיאור")
 
-SPECS — use extracted specs to compare like-for-like:
+SPECS — only apply spec analysis to tech/electronics products (phones, laptops, tablets, gaming consoles, cameras, etc.):
 - Higher RAM/storage = higher expected market value
 - Newer chip model (M2 > M1, newer i-series) = higher expected value
 - If specs seem mismatched with the asking price, flag it
+- For NON-TECH products (furniture, musical instruments, clothing, vehicles, sports equipment, etc.): DO NOT flag missing RAM/storage/chip specs. These specs are irrelevant and their absence is not a concern.
 
 PRICE COMPARISON — compare asking price to market data considering the specs:
 - A Mac Mini M1 8GB at ₪800 and M2 Pro 32GB at ₪3,000 are not the same product
 - Weight market data points that match the product's specs more heavily
+- For non-tech products, compare on the relevant attributes (brand, model, age, condition, included accessories)
 
 OTHER RULES:
 - If data came from web search only, add "Limited listings to compare — verify independently" to concerns
@@ -77,6 +79,7 @@ export function buildUserPrompt(input: AiAnalysisInput): string {
       : condition.conditionLabel;
 
   const specs = extractSpecs(listing.title, listing.description);
+  const hasTechSpecs = specs.ram != null || (specs.storage != null && specs.storage.length > 0) || specs.chipModel != null;
 
   return [
     'LISTING:',
@@ -84,7 +87,10 @@ export function buildUserPrompt(input: AiAnalysisInput): string {
     `- asking price: ${listing.price} ${listing.currency}`,
     `- description: ${listing.description ?? '(none)'}`,
     '',
-    `EXTRACTED SPECS: ${specs.summary}`,
+    // Only include EXTRACTED SPECS line when tech specs were actually found.
+    // For non-tech products (pianos, furniture, etc.) omitting this avoids
+    // the AI incorrectly flagging missing RAM/storage as a concern.
+    hasTechSpecs ? `EXTRACTED SPECS: ${specs.summary}` : null,
     specs.redFlags.length > 0 ? `RED FLAGS DETECTED: ${specs.redFlags.join(' | ')}` : null,
     specs.missingItems.length > 0 ? `MISSING ITEMS: ${specs.missingItems.join(', ')}` : null,
     '',
