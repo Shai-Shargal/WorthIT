@@ -24,10 +24,27 @@ const analysisSchema = new Schema(
       url: { type: String, maxlength: 2048 },
       image: { type: String, maxlength: 2048 },
     },
+    // Rich verdict matches shared/types/analysis.ts VerdictResult — the
+    // analysis pipeline produces an object, not just a label. Previously this
+    // was a String enum which silently CastError'd every save.
     verdict: {
-      type: String,
-      enum: ['worth_it', 'maybe', 'avoid'],
-      required: true,
+      verdict: {
+        type: String,
+        enum: ['worth_it', 'maybe', 'avoid'],
+        required: true,
+      },
+      worthRating: { type: Number, required: true },
+      confidence: { type: Number, required: true, min: 0, max: 1 },
+      confidenceLevel: {
+        type: String,
+        enum: ['low', 'medium', 'high'],
+        required: true,
+      },
+      estimatedValue: {
+        min: Number,
+        max: Number,
+        currency: String,
+      },
     },
     verdictReason: {
       type: String,

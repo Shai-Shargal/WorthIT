@@ -122,11 +122,19 @@ describe('Product schema validation', () => {
 });
 
 describe('Analysis schema validation', () => {
+  const validVerdict = {
+    verdict: 'maybe',
+    worthRating: 3,
+    confidence: 0.7,
+    confidenceLevel: 'high',
+    estimatedValue: { min: 100, max: 200, currency: 'ILS' },
+  };
+
   it('saves without userId or productId (optional for MVP)', () => {
     const doc = new AnalysisModel({
       analysisId: 'test-uuid-1234',
       listing: { title: 'iPhone 13', price: 1500, currency: 'ILS' },
-      verdict: 'maybe',
+      verdict: validVerdict,
     });
     expect(doc.validateSync()).toBeUndefined();
   });
@@ -135,10 +143,20 @@ describe('Analysis schema validation', () => {
     const doc = new AnalysisModel({
       analysisId: 'test-uuid-1234',
       listing: { title: 'iPhone 13', price: 1500, currency: 'ILS' },
-      verdict: 'unknown',
+      verdict: { ...validVerdict, verdict: 'unknown' },
     });
     const err = doc.validateSync();
-    expect(err?.errors['verdict']).toBeDefined();
+    expect(err?.errors['verdict.verdict']).toBeDefined();
+  });
+
+  it('rejects confidence outside [0, 1]', () => {
+    const doc = new AnalysisModel({
+      analysisId: 'test-uuid-1234',
+      listing: { title: 'iPhone 13', price: 1500, currency: 'ILS' },
+      verdict: { ...validVerdict, confidence: 1.5 },
+    });
+    const err = doc.validateSync();
+    expect(err?.errors['verdict.confidence']).toBeDefined();
   });
 
   it('accepts all dataQuality values including seed', () => {
@@ -146,7 +164,7 @@ describe('Analysis schema validation', () => {
       const doc = new AnalysisModel({
         analysisId: `test-${dq}`,
         listing: { title: 'Test', price: 100, currency: 'ILS' },
-        verdict: 'maybe',
+        verdict: validVerdict,
         marketData: { localMarketContext: { dataQuality: dq } },
       });
       expect(doc.validateSync()).toBeUndefined();
