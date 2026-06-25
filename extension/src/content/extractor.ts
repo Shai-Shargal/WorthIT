@@ -196,6 +196,55 @@ function extractImage(main: Element): string | undefined {
   return undefined;
 }
 
+// Selectors for the seller's description text block on Facebook item pages.
+const DESCRIPTION_DOM_SELECTORS = [
+  '[data-testid="item-description"]',
+  '[data-testid="marketplace_listing_item_description"]',
+] as const;
+
+function extractDescription(main: Element): string | undefined {
+  // Try specific data-testid selectors first.
+  for (const selector of DESCRIPTION_DOM_SELECTORS) {
+    try {
+      const el = main.querySelector(selector);
+      if (el) {
+        const text = getInnerText(el).trim();
+        if (text.length > 10) return text.slice(0, 5000);
+      }
+    } catch { /* skip */ }
+  }
+
+  // og:description fallback — sometimes populated on item pages.
+  const meta = document
+    .querySelector('meta[property="og:description"]')
+    ?.getAttribute('content')
+    ?.trim();
+  if (meta && meta.length > 10) return meta.slice(0, 5000);
+
+  // Last resort: find the largest text block inside the listing container
+  // that isn't the title or price. Looks for a <div> or <span> with enough
+  // prose text to be a seller description (> 40 chars, not all digits/symbols).
+  const container = findListingContainer(main);
+  const title = extractTitle(main) ?? '';
+  const candidates = Array.from(container.querySelectorAll('div, span, p'));
+  for (const el of candidates) {
+    // Skip elements that contain child elements with significant text
+    // (we want leaf-ish nodes with the actual prose)
+    if (el.querySelectorAll('div, p').length > 3) continue;
+    const text = getInnerText(el as Element).trim();
+    if (
+      text.length > 40 &&
+      text !== title &&
+      !PRICE_PATTERN.test(text.slice(0, 20)) &&
+      (text.match(/\p{L}/gu)?.length ?? 0) > 20
+    ) {
+      return text.slice(0, 5000);
+    }
+  }
+
+  return undefined;
+}
+
 function logExtractionError(field: string, url: string, attempted: string[]): void {
   console.warn(`[extractor] Failed to extract ${field} from ${url}. Tried: ${attempted.join(', ')}`);
 }
@@ -242,12 +291,10 @@ export function extractActiveListing(): ProductInput | null {
 
     const image = extractImage(main);
 
-    // og:description holds the seller's written description on item pages
-    const description =
-      document
-        .querySelector('meta[property="og:description"]')
-        ?.getAttribute('content')
-        ?.trim() || undefined;
+    // Facebook's og:description is often empty or stale on item pages.
+    // Read from the DOM first (same strategy as title extraction), then fall
+    // back to og:description. DOM selectors target the seller's text block.
+    const description = extractDescription(main);
 
     return {
       title,
