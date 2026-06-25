@@ -21,7 +21,7 @@ Return JSON ONLY in this exact schema:
   "worthRating": integer 1 to 5,
   "confidence": number 0.0 to 1.0,
   "confidenceLevel": "low" | "medium" | "high",
-  "summary": "1-2 plain sentences, friend tone, max 40 words",
+  "summary": "1-2 sentences. Always include concrete numbers: state the asking price, the typical market price (or range), and the gap between them. E.g. 'At ₪1,250 this is 45% below the market median of ₪2,299 — strong value for an i7/16GB machine.' No vague praise like 'great deal' or 'steal' without the numbers to back it up. Max 45 words.",
   "positives": ["short phrase", "short phrase"],
   "concerns": ["short phrase", "short phrase"]
 }
