@@ -76,9 +76,9 @@ export class MarketplaceObserver {
     }
 
     // Hard navigations / tab close — best-effort flush + reset.
-    window.addEventListener('beforeunload', () => {
-      // We can't await an async flush here; we just kick it off so the
-      // browser at least *attempts* a final POST.
+    // Facebook blocks 'beforeunload' via Permissions Policy; use 'pagehide'
+    // instead which fires on both navigation and tab close and is allowed.
+    window.addEventListener('pagehide', () => {
       void this.flushBatch();
       this.clearObservedListings();
     });

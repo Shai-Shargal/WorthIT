@@ -7,6 +7,12 @@ const UI_PATTERNS: RegExp[] = [
   /\b\d+\s*(min|mins|minute|minutes|hour|hours|hrs?|day|days)\s+ago\b/i,
   /\bago\b\s*$/i,
   /\bsponsored\b/i,
+  // Facebook "New for you" recommendation chrome — appears in og:title when
+  // the SPA hasn't flushed the real product title yet.
+  /^חדש בשבילך$/i,
+  /^new for you$/i,
+  /^marketplace$/i,
+  /^facebook marketplace$/i,
 ];
 
 export function isLikelyFbUiTitle(title: string): boolean {

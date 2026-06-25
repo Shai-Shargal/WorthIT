@@ -81,23 +81,12 @@ export function extractFromAnchor(anchor: HTMLAnchorElement, pageCcy: string): P
 
 // Meta selectors must use document scope — metas live in <head>, not inside main
 const TITLE_META_SELECTORS = ['meta[property="og:title"]'] as const;
-const TITLE_DOM_SELECTORS = ['h1', 'h2', '[data-testid="item-title"]', '[role="heading"]'] as const;
+// On Facebook item pages the DOM h1 is more reliable than og:title, which the
+// SPA sometimes leaves as "חדש בשבילך" / "New for you" stale chrome.
+const TITLE_DOM_SELECTORS = ['h1', '[data-testid="item-title"]', 'h2', '[role="heading"]'] as const;
 
 function extractTitle(main: Element): string | null {
-  // Check meta tags first (document-scoped)
-  for (const selector of TITLE_META_SELECTORS) {
-    try {
-      const el = document.querySelector(selector);
-      if (el) {
-        // meta elements use the content attribute; DOM elements use inner text
-        const text = (el.getAttribute('content') ?? getInnerText(el)).trim()
-          .replace(/\s*[|–—-]\s*Facebook\s*$/i, '').trim();
-        if (text && !isLikelyFbUiTitle(text)) return text;
-      }
-    } catch { /* skip broken selector */ }
-  }
-
-  // Then check DOM elements within main
+  // DOM headings first — far more reliable than og:title on Facebook's SPA.
   for (const selector of TITLE_DOM_SELECTORS) {
     try {
       const el = main.querySelector(selector);
@@ -106,19 +95,71 @@ function extractTitle(main: Element): string | null {
           .replace(/\s*[|–—-]\s*Facebook\s*$/i, '').trim();
         if (text && !isLikelyFbUiTitle(text)) return text;
       }
-    } catch { /* skip broken selector */ }
+    } catch { /* skip */ }
   }
 
-  // Last resort: pick from text lines
+  // og:title fallback — only if DOM yielded nothing useful.
+  for (const selector of TITLE_META_SELECTORS) {
+    try {
+      const el = document.querySelector(selector);
+      if (el) {
+        const text = (el.getAttribute('content') ?? getInnerText(el)).trim()
+          .replace(/\s*[|–—-]\s*Facebook\s*$/i, '').trim();
+        if (text && !isLikelyFbUiTitle(text)) return text;
+      }
+    } catch { /* skip */ }
+  }
+
+  // Last resort: pick from text lines within main
   const lines = getInnerText(main).split('\n').map((s) => s.trim()).filter(Boolean);
   return pickTitle(lines) || null;
 }
 
+// Containers that wrap the listing's own title + price on item pages.
+// We prefer scanning these before falling back to all-of-main, so we don't
+// accidentally pick up prices from "Similar listings" / sidebar cards.
+const LISTING_CONTAINER_SELECTORS = [
+  '[data-testid="marketplace_pdp_component"]',
+  '[data-testid="marketplace_listing_item"]',
+  'div[data-pagelet="MarketplacePDP"]',
+] as const;
+
+function findListingContainer(main: Element): Element {
+  for (const sel of LISTING_CONTAINER_SELECTORS) {
+    try {
+      const el = main.querySelector(sel);
+      if (el) return el;
+    } catch { /* skip */ }
+  }
+  // Narrow heuristic: the h1 is in the listing block — walk up to a
+  // reasonable ancestor that won't include the recommendations rail.
+  const h1 = main.querySelector('h1');
+  if (h1) {
+    // Walk up at most 6 levels, stop if the container gets too big
+    let node: Element | null = h1.parentElement;
+    for (let i = 0; i < 6 && node && node !== main; i++) {
+      if (node.querySelectorAll('h1').length === 1) return node;
+      node = node.parentElement;
+    }
+  }
+  return main;
+}
+
 function extractPrice(main: Element): { price: number | null; text: string | null } {
+  // Narrow scope: find the listing container first so DOM text scan doesn't
+  // hit sidebar recommendation prices.
+  const container = findListingContainer(main);
+
   const priceSources = [
+    // og:price:amount is authoritative when present (document-scoped)
     () => document.querySelector('meta[property="og:price:amount"]')?.getAttribute('content'),
-    () => main.querySelector('[data-testid="item-price"]')?.textContent?.trim(),
-    () => main.querySelector('span[role="img"][aria-label*="₪"]')?.getAttribute('aria-label'),
+    // data-testid selectors — most specific
+    () => container.querySelector('[data-testid="item-price"]')?.textContent?.trim(),
+    // aria-label on the shekel icon span
+    () => container.querySelector('span[role="img"][aria-label*="₪"]')?.getAttribute('aria-label'),
+    // Scoped text scan — listing container only, not all of main
+    () => findPriceText(container),
+    // Last resort: full main (catches edge cases where container heuristic failed)
     () => findPriceText(main),
   ];
 
