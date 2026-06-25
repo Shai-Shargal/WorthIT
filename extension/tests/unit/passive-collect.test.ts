@@ -175,13 +175,16 @@ describe('passive-collect integration', () => {
   // ---------------------------------------------------------------------------
 
   describe('initPassiveCollect routing', () => {
-    it('on a search page, constructs a MarketplaceObserver and adds extracted listings', () => {
+    it('on a search page, constructs a MarketplaceObserver and adds extracted listings', async () => {
       setLocation('https://www.facebook.com/marketplace/tlv/search?query=ps5');
       (searchDetection.isMarketplaceSearchPage as Mock).mockReturnValue(true);
       const listings = [makeListing({ listingId: '1' }), makeListing({ listingId: '2' })];
       (listingExtractor.extractListingsFromSearchPage as Mock).mockReturnValue(listings);
 
       const result = initPassiveCollect();
+      // startSearchPageCollection is now async (needs to resolve getApiBase).
+      // Flush the microtask queue so the observer is constructed before asserting.
+      await Promise.resolve();
 
       expect(result).toBe('search');
       expect(observerCtorMock).toHaveBeenCalledTimes(1);
@@ -227,9 +230,9 @@ describe('passive-collect integration', () => {
       (searchDetection.isMarketplaceSearchPage as Mock).mockReturnValue(true);
     });
 
-    it('re-collects ~1s after a scroll event', () => {
+    it('re-collects ~1s after a scroll event', async () => {
       (listingExtractor.extractListingsFromSearchPage as Mock).mockReturnValue([]);
-      startSearchPageCollection();
+      await startSearchPageCollection();
       // One call from the initial drain.
       expect(listingExtractor.extractListingsFromSearchPage).toHaveBeenCalledTimes(1);
 
@@ -254,7 +257,7 @@ describe('passive-collect integration', () => {
 
     it('re-collects when the DOM mutates (cards injected by Facebook)', async () => {
       (listingExtractor.extractListingsFromSearchPage as Mock).mockReturnValue([]);
-      startSearchPageCollection();
+      await startSearchPageCollection();
       expect(listingExtractor.extractListingsFromSearchPage).toHaveBeenCalledTimes(1);
 
       // Stage a card and trigger a mutation by appending to body.
@@ -283,25 +286,25 @@ describe('passive-collect integration', () => {
       (searchDetection.isMarketplaceSearchPage as Mock).mockReturnValue(true);
     });
 
-    it('is a no-op when the observer has not been initialised', () => {
+    it('is a no-op when the observer has not been initialised', async () => {
       // No startSearchPageCollection call — observer is null.
       collectSearchListings();
       expect(listingExtractor.extractListingsFromSearchPage).not.toHaveBeenCalled();
       expect(addObservationsMock).not.toHaveBeenCalled();
     });
 
-    it('does not call addObservations when extraction returns an empty array', () => {
+    it('does not call addObservations when extraction returns an empty array', async () => {
       (listingExtractor.extractListingsFromSearchPage as Mock).mockReturnValue([]);
-      startSearchPageCollection();
+      await startSearchPageCollection();
       // Initial drain ran but returned [], so addObservations stays untouched.
       expect(listingExtractor.extractListingsFromSearchPage).toHaveBeenCalledTimes(1);
       expect(addObservationsMock).not.toHaveBeenCalled();
     });
 
-    it('swallows extraction errors without crashing the observer', () => {
+    it('swallows extraction errors without crashing the observer', async () => {
       // Initial drain returns [] so startSearchPageCollection itself doesn't blow up.
       (listingExtractor.extractListingsFromSearchPage as Mock).mockReturnValue([]);
-      startSearchPageCollection();
+      await startSearchPageCollection();
 
       // Subsequent call throws — collectSearchListings must log and recover.
       (listingExtractor.extractListingsFromSearchPage as Mock).mockImplementation(() => {
@@ -311,7 +314,7 @@ describe('passive-collect integration', () => {
       expect(addObservationsMock).not.toHaveBeenCalled();
     });
 
-    it('swallows observer errors without crashing the page', () => {
+    it('swallows observer errors without crashing the page', async () => {
       (listingExtractor.extractListingsFromSearchPage as Mock).mockReturnValue([
         makeListing({ listingId: 'err-1' }),
       ]);
@@ -319,7 +322,7 @@ describe('passive-collect integration', () => {
         throw new Error('observer kaboom');
       });
 
-      expect(() => startSearchPageCollection()).not.toThrow();
+      await expect(startSearchPageCollection()).resolves.not.toThrow();
       expect(addObservationsMock).toHaveBeenCalledTimes(1);
     });
   });

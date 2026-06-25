@@ -131,8 +131,9 @@ export function collectSearchListings(): void {
  * on the page, then re-collect on scroll (infinite-scroll loads more cards)
  * and on DOM mutation (Facebook injects cards as you idle).
  */
-export function startSearchPageCollection(): void {
-  searchObserver = new MarketplaceObserver();
+export async function startSearchPageCollection(): Promise<void> {
+  const apiBase = await getApiBase();
+  searchObserver = new MarketplaceObserver(apiBase);
 
   // Drain what's already visible.
   collectSearchListings();
@@ -265,7 +266,7 @@ export function initPassiveCollect(): PageType {
   if (pageType === 'item_detail') {
     void silentlySaveItemListing();
   } else if (pageType === 'search') {
-    startSearchPageCollection();
+    void startSearchPageCollection();
   } else {
     startPassiveCollection();
   }

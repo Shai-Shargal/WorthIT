@@ -53,10 +53,11 @@ export class MarketplaceObserver {
   private readonly BATCH_TIMEOUT_MS = 30_000;
   /** Polling cadence for SPA navigation detection. */
   private readonly NAV_POLL_MS = 500;
-  /** Backend endpoint (relative; same-origin from facebook.com). */
-  private readonly ENDPOINT = '/marketplace/observe';
+  /** Absolute backend URL, resolved from chrome.storage at instantiation time. */
+  private readonly ENDPOINT: string;
 
-  constructor() {
+  constructor(apiBase: string) {
+    this.ENDPOINT = `${apiBase.replace(/\/$/, '')}/marketplace/observe`;
     this.setupListeners();
   }
 

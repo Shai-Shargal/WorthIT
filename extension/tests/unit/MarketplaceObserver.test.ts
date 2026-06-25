@@ -63,7 +63,7 @@ describe('MarketplaceObserver', () => {
     logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    observer = new MarketplaceObserver();
+    observer = new MarketplaceObserver('http://localhost:4000');
   });
 
   afterEach(() => {
@@ -153,7 +153,7 @@ describe('MarketplaceObserver', () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe('/marketplace/observe');
+      expect(url).toBe('http://localhost:4000/marketplace/observe');
       expect(init.method).toBe('POST');
 
       const body = JSON.parse(init.body as string);
