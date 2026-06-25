@@ -14,16 +14,17 @@ export function createApp(): Application {
   // Sentry request handler must be first (initSentry called once in main.ts)
   app.use(sentryRequestHandler());
 
-  // CORS: allow all origins in dev, require explicit list in prod
+  // CORS: allow all origins in dev and pre-PMF dogfood. When CORS_ORIGIN is
+  // set (comma-separated list), restrict to those exact origins. Unpacked
+  // Chrome extensions change ID on every reload so we can't pin an ID until
+  // the extension is published to the store.
   const allowedOrigins = process.env.CORS_ORIGIN
     ? process.env.CORS_ORIGIN.split(',').map((s) => s.trim())
     : null;
 
   app.use(
     cors({
-      origin: process.env.NODE_ENV === 'production'
-        ? (allowedOrigins ?? false)   // prod: explicit list required
-        : (allowedOrigins ?? true),   // dev: allow all (extension ID unknown at dev time)
+      origin: allowedOrigins ?? true,   // allow all until stable extension ID
       credentials: true,
       methods: ['GET', 'POST', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
