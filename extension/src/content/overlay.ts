@@ -1,4 +1,5 @@
 import type { AnalyzeProductResponse, Verdict } from '../../../shared/types/index.js';
+import { getApiBase } from '../services/api.js';
 
 const OVERLAY_ID = 'worthit-overlay';
 
@@ -242,6 +243,69 @@ function buildDataQualityBanner(dataQuality: 'real' | 'seed' | 'limited' | 'insu
   );
 }
 
+function buildFeedbackRow(analysisId: string): HTMLDivElement {
+  const row = el('div');
+  styleEl(row, {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: '8px',
+    marginTop: '2px',
+    borderTop: '1px solid #f1f5f9',
+  });
+
+  const label = el('span', { fontSize: '10px', color: '#94a3b8' }, 'Was this helpful?');
+
+  const buttons = el('div');
+  styleEl(buttons, { display: 'flex', gap: '4px' });
+
+  let submitted = false;
+
+  const thanks = el('span', { fontSize: '10px', color: '#64748b' }, 'Thanks! 👍');
+  thanks.style.display = 'none';
+
+  const makeBtn = (emoji: string, helpful: boolean) => {
+    const btn = el('button');
+    styleEl(btn, {
+      border: '1px solid #e2e8f0',
+      background: '#f8fafc',
+      borderRadius: '6px',
+      padding: '2px 8px',
+      fontSize: '13px',
+      cursor: 'pointer',
+      lineHeight: '1.6',
+    });
+    btn.textContent = emoji;
+    btn.title = helpful ? 'Verdict was correct' : 'Verdict was wrong';
+    btn.addEventListener('mouseenter', () => { btn.style.background = '#f1f5f9'; });
+    btn.addEventListener('mouseleave', () => { btn.style.background = '#f8fafc'; });
+    btn.addEventListener('click', () => {
+      if (submitted) return;
+      submitted = true;
+      buttons.style.display = 'none';
+      label.style.display = 'none';
+      thanks.style.display = '';
+      // Fire-and-forget — don't block the user on a feedback POST
+      void getApiBase().then((base) =>
+        fetch(`${base.replace(/\/$/, '')}/analysis/${analysisId}/feedback`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ helpful }),
+        }).catch(() => { /* silent fail */ })
+      );
+    });
+    return btn;
+  };
+
+  buttons.appendChild(makeBtn('👍', true));
+  buttons.appendChild(makeBtn('👎', false));
+
+  row.appendChild(label);
+  row.appendChild(thanks);
+  row.appendChild(buttons);
+  return row;
+}
+
 function buildResultCard(item: AnalyzeProductResponse): HTMLElement {
   const { listing, verdict, reasoning, localMarketContext } = item;
 
@@ -394,6 +458,7 @@ function buildResultCard(item: AnalyzeProductResponse): HTMLElement {
   }
 
   wrapper.appendChild(buildConfidenceBar(verdict.confidence));
+  wrapper.appendChild(buildFeedbackRow(item.analysisId));
 
   return wrapper as HTMLElement;
 }

@@ -67,6 +67,34 @@ analysisRouter.post('/analyze', optionalAuth, async (req: AuthenticatedRequest, 
   }
 });
 
+// POST /analysis/:id/feedback — open endpoint, no auth required.
+// Stores a simple thumbs-up/down on the analysis for accuracy tracking.
+analysisRouter.post('/:id/feedback', async (req, res, next) => {
+  try {
+    if (!isMongoReady()) {
+      return res.status(503).json({ error: 'Storage unavailable' });
+    }
+
+    const { helpful } = req.body;
+    if (typeof helpful !== 'boolean') {
+      return res.status(400).json({ error: 'helpful must be boolean' });
+    }
+
+    const result = await AnalysisModel.updateOne(
+      { analysisId: req.params.id },
+      { $set: { feedback: { helpful, submittedAt: new Date() } } },
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: 'Analysis not found' });
+    }
+
+    res.status(200).json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /analysis/:id — retrieve single analysis (user-scoped)
 analysisRouter.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
   try {

@@ -99,6 +99,10 @@ const analysisSchema = new Schema(
         },
       },
     },
+    feedback: {
+      helpful: { type: Boolean },
+      submittedAt: { type: Date },
+    },
     createdAt: {
       type: Date,
       default: Date.now,
