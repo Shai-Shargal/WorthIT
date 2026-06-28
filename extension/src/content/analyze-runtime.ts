@@ -43,63 +43,35 @@ function setLastExtractedUrl(url: string): void {
 //
 // Problem: SPA navigation updates location.href immediately, but the DOM
 // (h1 title, price, description) still shows the PREVIOUS listing for
-// 500–2000 ms. Extracting immediately returns stale data under the new URL.
+// 500–3000 ms. Extracting immediately returns stale data.
 //
-// Solution: on URL change, use a MutationObserver to detect when the main
-// content area actually updates (text/structure changes). Once mutations are
-// detected on the main element, the new listing is being rendered. Extract
-// then, or use a 2.5 s hard timeout as fallback.
-async function waitForFreshListing(timeoutMs = 7000): Promise<ReturnType<typeof extractActiveListing>> {
+// Solution: poll extractActiveListing() and validate the extracted product's
+// URL matches the current URL. This guarantees we're reading the correct
+// listing — not just that time has passed, but that the DOM actually
+// reflects the current URL.
+async function waitForFreshListing(timeoutMs = 8000): Promise<ReturnType<typeof extractActiveListing>> {
   const currentUrl = location.href;
-  const lastUrl = getLastExtractedUrl();
-  const isNewListing = lastUrl !== null && lastUrl !== currentUrl;
-
-  if (isNewListing) {
-    // Wait for the main content area to be mutated (Facebook re-renders the listing).
-    await new Promise<void>((resolve) => {
-      const main = document.querySelector('[role="main"]') ?? document.querySelector('div[data-pagelet]');
-      if (!main) {
-        // Fallback if we can't find the main element — just wait a fixed time.
-        setTimeout(resolve, 2500);
-        return;
-      }
-
-      const observer = new MutationObserver(() => {
-        observer.disconnect();
-        // Give the DOM a moment to finish rendering after the mutation.
-        setTimeout(resolve, 200);
-      });
-
-      // Watch for content changes (textContent, structure).
-      observer.observe(main, {
-        childList: true,
-        subtree: true,
-        characterData: true,
-      });
-
-      // Hard timeout: if mutations don't fire within 2.5s, stop waiting.
-      setTimeout(() => {
-        observer.disconnect();
-        resolve();
-      }, 2500);
-    });
-
-    // Abort if user navigated again during the wait.
-    if (location.href !== currentUrl) return null;
-  }
-
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
     if (location.href !== currentUrl) return null;
 
     const product = extractActiveListing();
-    if (product && product.price > 0) {
-      setLastExtractedUrl(currentUrl);
-      return product;
+    if (!product || product.price <= 0) {
+      await new Promise((r) => setTimeout(r, 200));
+      continue;
     }
 
-    await new Promise((r) => setTimeout(r, 300));
+    // Validate: extracted URL must match current URL. If not, the DOM is
+    // still showing the previous listing — wait longer.
+    if (product.url !== currentUrl) {
+      await new Promise((r) => setTimeout(r, 200));
+      continue;
+    }
+
+    // DOM is fresh and matches current URL.
+    setLastExtractedUrl(currentUrl);
+    return product;
   }
 
   return null;
