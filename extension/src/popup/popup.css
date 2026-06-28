@@ -103,3 +103,87 @@ html, body {
   border-radius: 6px;
   font-size: 10px;
 }
+
+.popup__btn--scan {
+  background: #0ea5e9;
+}
+
+.popup__btn--scan:hover:not(:disabled) {
+  background: #0284c7;
+}
+
+.scan-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.scan-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.scan-card__rank {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  min-width: 22px;
+  padding-top: 1px;
+}
+
+.scan-card__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.scan-card__title {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scan-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.scan-card__price {
+  font-size: 11px;
+  color: #475569;
+}
+
+.scan-card__stars {
+  font-size: 11px;
+  color: #f59e0b;
+}
+
+.scan-card__error {
+  font-size: 11px;
+  color: #b91c1c;
+}
+
+.scan-card__view {
+  font-size: 11px;
+  font-weight: 600;
+  color: #0ea5e9;
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding-top: 1px;
+  cursor: pointer;
+}
+
+.scan-card__view:hover {
+  text-decoration: underline;
+}
