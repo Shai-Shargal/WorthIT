@@ -45,29 +45,46 @@ function setLastExtractedUrl(url: string): void {
 // (h1 title, price, description) still shows the PREVIOUS listing for
 // 500–2000 ms. Extracting immediately returns stale data under the new URL.
 //
-// Solution: on URL change, poll document.title — Facebook updates it when
-// the new listing is rendered. Extract only once the title no longer matches
-// the previous listing's title, with a 3 s hard timeout as fallback.
+// Solution: on URL change, use a MutationObserver to detect when the main
+// content area actually updates (text/structure changes). Once mutations are
+// detected on the main element, the new listing is being rendered. Extract
+// then, or use a 2.5 s hard timeout as fallback.
 async function waitForFreshListing(timeoutMs = 7000): Promise<ReturnType<typeof extractActiveListing>> {
   const currentUrl = location.href;
   const lastUrl = getLastExtractedUrl();
   const isNewListing = lastUrl !== null && lastUrl !== currentUrl;
 
-  // Capture the title that belongs to the PREVIOUS listing so we can wait
-  // for it to change before extracting the new one.
-  const titleAtStart = document.title;
-
   if (isNewListing) {
-    // Poll until document.title changes (Facebook updates it with the new
-    // listing name during SPA navigation) or until the hard timeout.
-    const titleDeadline = Date.now() + 3000;
-    while (Date.now() < titleDeadline) {
-      if (location.href !== currentUrl) return null;
-      if (document.title !== titleAtStart) break;
-      await new Promise((r) => setTimeout(r, 150));
-    }
-    // Give the rest of the DOM an additional tick to finish rendering.
-    await new Promise((r) => setTimeout(r, 200));
+    // Wait for the main content area to be mutated (Facebook re-renders the listing).
+    await new Promise<void>((resolve) => {
+      const main = document.querySelector('[role="main"]') ?? document.querySelector('div[data-pagelet]');
+      if (!main) {
+        // Fallback if we can't find the main element — just wait a fixed time.
+        setTimeout(resolve, 2500);
+        return;
+      }
+
+      const observer = new MutationObserver(() => {
+        observer.disconnect();
+        // Give the DOM a moment to finish rendering after the mutation.
+        setTimeout(resolve, 200);
+      });
+
+      // Watch for content changes (textContent, structure).
+      observer.observe(main, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+
+      // Hard timeout: if mutations don't fire within 2.5s, stop waiting.
+      setTimeout(() => {
+        observer.disconnect();
+        resolve();
+      }, 2500);
+    });
+
+    // Abort if user navigated again during the wait.
     if (location.href !== currentUrl) return null;
   }
 
