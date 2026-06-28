@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { isSearchPage, resolveListingUrl, starsHtml, buildResultCard } from '../../src/popup/scanHelpers.js';
 import type { AnalyzeProductResponse } from '../../../shared/types/index.js';
 
