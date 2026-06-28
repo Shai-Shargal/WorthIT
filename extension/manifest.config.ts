@@ -24,12 +24,12 @@ export default defineManifest({
       run_at: 'document_idle',
     },
   ],
-  permissions: ['activeTab', 'scripting', 'storage'],
+  permissions: ['activeTab', 'scripting', 'storage', 'tabs'],
   host_permissions: [
     'https://www.facebook.com/*',
     'https://facebook.com/*',
     'https://web.facebook.com/*',
-    'http://localhost:4000/*',
+    'https://worthit-backend-sandy.vercel.app/*',
   ],
   web_accessible_resources: [
     {
