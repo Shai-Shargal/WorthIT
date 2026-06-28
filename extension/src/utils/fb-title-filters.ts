@@ -7,12 +7,17 @@ const UI_PATTERNS: RegExp[] = [
   /\b\d+\s*(min|mins|minute|minutes|hour|hours|hrs?|day|days)\s+ago\b/i,
   /\bago\b\s*$/i,
   /\bsponsored\b/i,
-  // Facebook "New for you" recommendation chrome — appears in og:title when
-  // the SPA hasn't flushed the real product title yet.
-  /^חדש בשבילך$/i,
+  // Facebook SPA chrome strings — appear in og:title / DOM headings when the
+  // page hasn't flushed the real product title yet, or as section headers.
+  /^חדש בשבילך$/i,       // "New for you"
   /^new for you$/i,
+  /^בחירות היום$/i,       // "Today's picks"
+  /^today'?s picks$/i,
+  /^מומלץ עבורך$/i,       // "Recommended for you"
+  /^recommended for you$/i,
   /^marketplace$/i,
   /^facebook marketplace$/i,
+  /^שוק$/i,               // "Marketplace" in Hebrew short form
 ];
 
 export function isLikelyFbUiTitle(title: string): boolean {
