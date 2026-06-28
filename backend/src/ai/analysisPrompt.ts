@@ -42,6 +42,8 @@ RED FLAGS — if any of the following are detected, add them to concerns and red
 - Functional issues hinted ("לא תמיד עולה", intermittent problems)
 - Vague title designed to hide details in description ("כנסו לתיאור")
 
+MODIFICATIONS & UPGRADES — when the description mentions premium components, modifications, or upgrades (e.g. Seymour Duncan pickups, Floyd Rose bridge, custom parts, professional servicing, original receipts), these INCREASE the fair market value significantly above a stock item. Factor them into the price assessment — do not compare a modified/upgraded item against stock item market prices.
+
 SPECS — only apply spec analysis to tech/electronics products (phones, laptops, tablets, gaming consoles, cameras, etc.):
 - Higher RAM/storage = higher expected market value
 - Newer chip model (M2 > M1, newer i-series) = higher expected value

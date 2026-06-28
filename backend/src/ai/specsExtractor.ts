@@ -81,10 +81,36 @@ export function extractSpecs(title: string, description?: string): ProductSpecs 
   return { ...partial, summary: buildSummary(partial) };
 }
 
-// Returns an enriched search query with key specs appended
-export function buildEnrichedQuery(title: string, specs: ProductSpecs): string {
+// Extracts the first capitalised brand/model token from a description.
+// Looks for a sequence of Latin words starting with an uppercase letter —
+// e.g. "Jackson Rhoads JA32", "Seymour Duncan", "Floyd Rose", "Fender Stratocaster".
+// Only the FIRST such sequence is returned so we don't flood the search query.
+function extractBrandModelFromDescription(description: string | undefined): string {
+  if (!description) return '';
+  // Match sequences of 1-3 capitalised Latin words (the model/brand name at
+  // the start of a listing description before the rest of the Hebrew text).
+  const match = description.match(/\b([A-Z][A-Za-z0-9]*(?:\s+[A-Z][A-Za-z0-9]*){0,2})\b/);
+  const candidate = match?.[1]?.trim() ?? '';
+  // Skip single very short tokens that are likely abbreviations, not brands.
+  if (candidate.length < 4) return '';
+  return candidate;
+}
+
+// Returns an enriched search query with key specs and brand/model appended.
+export function buildEnrichedQuery(
+  title: string,
+  specs: ProductSpecs,
+  description?: string,
+): string {
   const tokens: string[] = [title];
   if (specs.chipModel) tokens.push(specs.chipModel);
   if (specs.ram) tokens.push(specs.ram);
+  // For non-tech products the description often contains the brand/model name
+  // (e.g. "Jackson Rhoads JA32", "Floyd Rose") that makes the Tavily search
+  // much more specific than searching by the generic Hebrew title alone.
+  if (!specs.chipModel && !specs.ram) {
+    const brand = extractBrandModelFromDescription(description);
+    if (brand) tokens.push(brand);
+  }
   return tokens.join(' ');
 }

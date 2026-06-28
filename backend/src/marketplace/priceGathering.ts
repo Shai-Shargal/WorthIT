@@ -69,7 +69,7 @@ export async function gatherPrices(query: {
 
   if (combined.length < TAVILY_THRESHOLD) {
     const specs = extractSpecs(query.name, query.description);
-    const enrichedName = buildEnrichedQuery(query.name, specs);
+    const enrichedName = buildEnrichedQuery(query.name, specs, query.description);
     const tavilyObs = await tavilySearch({
       name: enrichedName,
       currency,
