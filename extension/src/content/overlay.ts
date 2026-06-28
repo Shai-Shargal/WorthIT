@@ -279,7 +279,9 @@ function buildFeedbackRow(analysisId: string): HTMLDivElement {
     btn.title = helpful ? 'Verdict was correct' : 'Verdict was wrong';
     btn.addEventListener('mouseenter', () => { btn.style.background = '#f1f5f9'; });
     btn.addEventListener('mouseleave', () => { btn.style.background = '#f8fafc'; });
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       if (submitted) return;
       submitted = true;
       buttons.style.display = 'none';
