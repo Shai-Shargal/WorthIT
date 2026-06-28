@@ -25,33 +25,49 @@ function watchForUrlChange(): void {
   }, 500);
 }
 
-// Extract the numeric listing ID from a Facebook Marketplace item URL.
-function listingIdFromUrl(url: string): string | null {
-  return url.match(/\/marketplace\/item\/(\d+)/)?.[1] ?? null;
-}
+// Persist the last-extracted URL on globalThis so it survives module
+// re-executions within the same document (Facebook SPA never reloads
+// the document, so this lives as long as the tab is open).
+const _g = globalThis as typeof globalThis & {
+  __worthit_lastUrl?: string;
+};
 
-// The URL of the last listing we successfully extracted data from.
-// Used to detect SPA navigation so we can wait for the DOM to re-render
-// before extracting the new listing.
-let lastExtractedUrl: string | null = null;
+function getLastExtractedUrl(): string | null {
+  return _g.__worthit_lastUrl ?? null;
+}
+function setLastExtractedUrl(url: string): void {
+  _g.__worthit_lastUrl = url;
+}
 
 // Wait for Facebook's SPA to finish rendering the listing at the current URL.
 //
 // Problem: SPA navigation updates location.href immediately, but the DOM
 // (h1 title, price, description) still shows the PREVIOUS listing for
-// 500–1500 ms. Extracting immediately returns stale data under the new URL.
+// 500–2000 ms. Extracting immediately returns stale data under the new URL.
 //
-// Solution: track which URL we last extracted from. On a URL change, add a
-// fixed 1.5 s wait — enough for Facebook to finish re-rendering — before
-// we start extraction attempts. On the same URL (re-analyze same listing),
-// no delay is added.
-async function waitForFreshListing(timeoutMs = 6000): Promise<ReturnType<typeof extractActiveListing>> {
+// Solution: on URL change, poll document.title — Facebook updates it when
+// the new listing is rendered. Extract only once the title no longer matches
+// the previous listing's title, with a 3 s hard timeout as fallback.
+async function waitForFreshListing(timeoutMs = 7000): Promise<ReturnType<typeof extractActiveListing>> {
   const currentUrl = location.href;
+  const lastUrl = getLastExtractedUrl();
+  const isNewListing = lastUrl !== null && lastUrl !== currentUrl;
 
-  // New listing detected — wait for SPA re-render before reading the DOM.
-  if (lastExtractedUrl !== null && lastExtractedUrl !== currentUrl) {
-    await new Promise((r) => setTimeout(r, 1500));
-    // Abort if the user navigated away again during the wait.
+  // Capture the title that belongs to the PREVIOUS listing so we can wait
+  // for it to change before extracting the new one.
+  const titleAtStart = document.title;
+
+  if (isNewListing) {
+    // Poll until document.title changes (Facebook updates it with the new
+    // listing name during SPA navigation) or until the hard timeout.
+    const titleDeadline = Date.now() + 3000;
+    while (Date.now() < titleDeadline) {
+      if (location.href !== currentUrl) return null;
+      if (document.title !== titleAtStart) break;
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    // Give the rest of the DOM an additional tick to finish rendering.
+    await new Promise((r) => setTimeout(r, 200));
     if (location.href !== currentUrl) return null;
   }
 
@@ -62,7 +78,7 @@ async function waitForFreshListing(timeoutMs = 6000): Promise<ReturnType<typeof 
 
     const product = extractActiveListing();
     if (product && product.price > 0) {
-      lastExtractedUrl = currentUrl;
+      setLastExtractedUrl(currentUrl);
       return product;
     }
 
