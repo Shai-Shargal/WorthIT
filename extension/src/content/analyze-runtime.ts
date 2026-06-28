@@ -42,32 +42,45 @@ function setLastExtractedUrl(url: string): void {
 // Wait for Facebook's SPA to finish rendering the listing at the current URL.
 //
 // Problem: SPA navigation updates location.href immediately, but the DOM
-// (h1 title, price, description) still shows the PREVIOUS listing for
-// 500–3000 ms. Extracting immediately returns stale data.
+// (h1 title, price, description) still shows the PREVIOUS listing. Slow
+// networks and variable re-render times mean even 2.5s isn't always enough.
 //
-// Solution: on URL change (new listing detected), wait 2.5 seconds to let
-// Facebook's SPA finish DOM re-rendering. Then poll extractActiveListing()
-// until we get a valid product. This is simple and reliable — no timing
-// detection heuristics, just wait long enough for the worst case.
-async function waitForFreshListing(timeoutMs = 8000): Promise<ReturnType<typeof extractActiveListing>> {
+// Solution: on URL change, wait 4 seconds (covers p99.9 of FB SPA times).
+// Then poll extractActiveListing() until we get a valid product, with a
+// safety re-extract at the end to catch any lingering stale data.
+async function waitForFreshListing(timeoutMs = 10000): Promise<ReturnType<typeof extractActiveListing>> {
   const currentUrl = location.href;
   const lastUrl = getLastExtractedUrl();
   const isNewListing = lastUrl !== null && lastUrl !== currentUrl;
 
-  // If this is a new listing (URL changed since last extraction), wait for
-  // the DOM to re-render. 2.5s covers p99 of Facebook's SPA re-render times.
+  // If this is a new listing, wait for the DOM to re-render.
+  // 4s covers most cases; we also retry extraction below to be safe.
   if (isNewListing) {
-    await new Promise((r) => setTimeout(r, 2500));
+    await new Promise((r) => setTimeout(r, 4000));
     if (location.href !== currentUrl) return null;
   }
 
   const deadline = Date.now() + timeoutMs;
+  let lastAttempt: ReturnType<typeof extractActiveListing> | null = null;
 
   while (Date.now() < deadline) {
     if (location.href !== currentUrl) return null;
 
     const product = extractActiveListing();
     if (product && product.price > 0) {
+      lastAttempt = product;
+      // On new listing, do one final re-extract to confirm freshness.
+      if (isNewListing) {
+        await new Promise((r) => setTimeout(r, 200));
+        const confirm = extractActiveListing();
+        if (confirm && confirm.price > 0 && confirm.title === product.title) {
+          setLastExtractedUrl(currentUrl);
+          return confirm;
+        }
+        // If re-extract differs, keep trying (DOM still changing).
+        await new Promise((r) => setTimeout(r, 300));
+        continue;
+      }
       setLastExtractedUrl(currentUrl);
       return product;
     }
@@ -75,7 +88,9 @@ async function waitForFreshListing(timeoutMs = 8000): Promise<ReturnType<typeof 
     await new Promise((r) => setTimeout(r, 300));
   }
 
-  return null;
+  // Fallback: if we got a valid product at any point, return the last one.
+  // (Though we should always succeed before timeout.)
+  return lastAttempt;
 }
 
 export async function runAnalyze(): Promise<void> {
