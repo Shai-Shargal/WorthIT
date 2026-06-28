@@ -44,6 +44,17 @@
         });
       return true;
     }
+    if (msg.type === 'WORTHIT_GET_LISTINGS') {
+      import(chrome.runtime.getURL('assets/worthit-listings.js'))
+        .then(function (mod) {
+          sendResponse(mod.getListings());
+        })
+        .catch(function (err) {
+          console.warn('[WorthIT] Failed to get listings:', err);
+          sendResponse([]);
+        });
+      return true; // keep channel open for async sendResponse
+    }
     return false;
   });
 })();

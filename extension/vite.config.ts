@@ -30,6 +30,15 @@ function bundleContentScripts(): Plugin {
         target: 'es2022',
         outfile: path.join(extensionRoot, 'dist/assets/worthit-passive.js'),
       });
+      await esbuild.build({
+        entryPoints: [path.join(extensionRoot, 'src/content/listings-runtime.ts')],
+        absWorkingDir: repoRoot,
+        bundle: true,
+        format: 'esm',
+        platform: 'browser',
+        target: 'es2022',
+        outfile: path.join(extensionRoot, 'dist/assets/worthit-listings.js'),
+      });
     },
   };
 }
