@@ -5,11 +5,8 @@ import {
   isMarketplaceSearchPage,
 } from '../../src/marketplace/searchDetection.js';
 import {
-  extractImageUrl,
   extractListingId,
   extractListingsFromSearchPage,
-  extractLocation,
-  extractSellerName,
   extractSingleListing,
   parsePrice,
 } from '../../src/marketplace/listingExtractor.js';
@@ -138,74 +135,53 @@ describe('parsePrice', () => {
 });
 
 // -----------------------------------------------------------------------------
-// listingExtractor — DOM helpers (jsdom-backed)
-// -----------------------------------------------------------------------------
-
-function makeArticle(html: string): Element {
-  const wrapper = document.createElement('div');
-  wrapper.innerHTML = html;
-  // Returns the listing root we just constructed.
-  return wrapper.firstElementChild as Element;
-}
-
-describe('extractLocation', () => {
-  it('reads location from data-testid', () => {
-    const el = makeArticle('<div><span data-testid="location">Tel Aviv</span></div>');
-    expect(extractLocation(el)).toBe('Tel Aviv');
-  });
-
-  it('falls back to class-based selector', () => {
-    const el = makeArticle('<div><span class="locationLabel">Haifa</span></div>');
-    expect(extractLocation(el)).toBe('Haifa');
-  });
-
-  it('returns null when there is no location element', () => {
-    const el = makeArticle('<div><span>nothing here</span></div>');
-    expect(extractLocation(el)).toBeNull();
-  });
-});
-
-describe('extractImageUrl', () => {
-  it('returns the src of the first image', () => {
-    const el = makeArticle(
-      '<div><img data-testid="listing_image" src="https://cdn.example.com/a.jpg" /></div>',
-    );
-    expect(extractImageUrl(el)).toBe('https://cdn.example.com/a.jpg');
-  });
-
-  it('falls back to a plain img when no targeted selector hits', () => {
-    const el = makeArticle('<div><img src="https://cdn.example.com/b.jpg" /></div>');
-    expect(extractImageUrl(el)).toBe('https://cdn.example.com/b.jpg');
-  });
-
-  it('returns null when there are no images', () => {
-    const el = makeArticle('<div><span>no images</span></div>');
-    expect(extractImageUrl(el)).toBeNull();
-  });
-});
-
-describe('extractSellerName', () => {
-  it('reads seller from data-testid', () => {
-    const el = makeArticle('<div><span data-testid="seller_name">John Seller</span></div>');
-    expect(extractSellerName(el)).toBe('John Seller');
-  });
-
-  it('returns null when no seller element exists', () => {
-    const el = makeArticle('<div><span>nothing</span></div>');
-    expect(extractSellerName(el)).toBeNull();
-  });
-});
-
-// -----------------------------------------------------------------------------
-// extractSingleListing — mock Facebook HTML
+// extractSingleListing — real Facebook DOM shape
+//
+// The <a href="/marketplace/item/{id}"> wraps the entire card. Title and
+// location come from img[alt] ("{title} in {city}, {district}"). Price comes
+// from the first ₪-prefixed text node inside the link.
 // -----------------------------------------------------------------------------
 
 function setLocation(href: string): void {
-  // jsdom's Window.location is read-only; jsdom supports replace().
   window.history.replaceState({}, '', href);
 }
 
 const ORIGINAL_HREF = 'https://www.facebook.com/';
+
+/** Builds a real-shape Facebook card <a> element and returns it as HTMLAnchorElement. */
+function makeCardLink(opts: {
+  href?: string | null;
+  ariaLabel?: string;
+  imgAlt?: string | null;
+  imgSrc?: string | null;
+  price?: string | null;
+  extraPrices?: string[];
+}): HTMLAnchorElement {
+  const a = document.createElement('a');
+  if (opts.href != null) a.setAttribute('href', opts.href);
+  if (opts.ariaLabel) a.setAttribute('aria-label', opts.ariaLabel);
+
+  if (opts.imgAlt != null || opts.imgSrc != null) {
+    const img = document.createElement('img');
+    if (opts.imgAlt != null) img.setAttribute('alt', opts.imgAlt);
+    if (opts.imgSrc != null) img.setAttribute('src', opts.imgSrc);
+    a.appendChild(img);
+  }
+
+  // Facebook renders the current price first, then optionally the struck-through original price.
+  if (opts.price != null) {
+    const priceSpan = document.createElement('span');
+    priceSpan.textContent = opts.price;
+    a.appendChild(priceSpan);
+  }
+  for (const extra of opts.extraPrices ?? []) {
+    const span = document.createElement('span');
+    span.textContent = extra;
+    a.appendChild(span);
+  }
+
+  return a;
+}
 
 describe('extractSingleListing', () => {
   beforeEach(() => {
@@ -216,119 +192,126 @@ describe('extractSingleListing', () => {
     setLocation(ORIGINAL_HREF);
   });
 
-  function makeListingMarkup(opts: {
-    href?: string | null;
-    title?: string | null;
-    price?: string | null;
-    location?: string | null;
-    image?: string | null;
-    seller?: string | null;
-  }): Element {
-    const parts: string[] = [];
-    if (opts.href !== null && opts.href !== undefined) {
-      parts.push(`<a href="${opts.href}">link</a>`);
-    }
-    if (opts.title !== null && opts.title !== undefined) {
-      parts.push(`<h3>${opts.title}</h3>`);
-    }
-    if (opts.price !== null && opts.price !== undefined) {
-      parts.push(`<span class="price">${opts.price}</span>`);
-    }
-    if (opts.location) {
-      parts.push(`<span data-testid="location">${opts.location}</span>`);
-    }
-    if (opts.image) {
-      parts.push(`<img data-testid="listing_image" src="${opts.image}" />`);
-    }
-    if (opts.seller) {
-      parts.push(`<span data-testid="seller_name">${opts.seller}</span>`);
-    }
-    return makeArticle(`<div data-testid="marketplace_search_result">${parts.join('')}</div>`);
-  }
-
-  it('extracts every field from a complete listing', () => {
-    const element = makeListingMarkup({
-      href: '/marketplace/item/1367953568531456/',
-      title: 'PS5 Console',
-      price: '₪ 1,700',
-      location: 'Tel Aviv',
-      image: 'https://cdn.example.com/ps5.jpg',
-      seller: 'John Seller',
+  it('extracts all fields from a complete listing card', () => {
+    const link = makeCardLink({
+      href: '/marketplace/item/1367953568531456/?ref=search',
+      ariaLabel: 'PS5 Console, ₪1,700, Tel Aviv, TA, listing 1367953568531456',
+      imgAlt: 'PS5 Console in Tel Aviv, TA',
+      imgSrc: 'https://cdn.example.com/ps5.jpg',
+      price: '₪1,700',
     });
 
-    const listing = extractSingleListing(element);
+    const listing = extractSingleListing(link);
     expect(listing).not.toBeNull();
     expect(listing!.marketplace).toBe('facebook');
     expect(listing!.listingId).toBe('1367953568531456');
     expect(listing!.title).toBe('PS5 Console');
     expect(listing!.price).toBe(1700);
     expect(listing!.currency).toBe('ILS');
-    expect(listing!.location).toBe('Tel Aviv');
-    expect(listing!.imageUrl).toBe('https://cdn.example.com/ps5.jpg');
-    expect(listing!.sellerName).toBe('John Seller');
+    expect(listing!.location).toBe('Tel Aviv, TA');
+    expect(listing!.imageUrl).toContain('cdn.example.com/ps5.jpg');
     expect(listing!.searchQuery).toBe('ps5');
     expect(listing!.observedAt).toBeInstanceOf(Date);
     expect(listing!.listingUrl).toContain('/marketplace/item/1367953568531456');
   });
 
-  it('omits optional fields gracefully when absent', () => {
-    const element = makeListingMarkup({
+  it('picks the first (current) price when two prices are present (strikethrough case)', () => {
+    const link = makeCardLink({
       href: '/marketplace/item/42/',
-      title: 'Used Camera',
+      imgAlt: 'Used Camera in Tel Aviv, TA',
+      price: '₪1,600',
+      extraPrices: ['₪1,900'],
+    });
+    const listing = extractSingleListing(link);
+    expect(listing).not.toBeNull();
+    expect(listing!.price).toBe(1600);
+  });
+
+  it('falls back to aria-label for title when img alt is absent', () => {
+    const link = makeCardLink({
+      href: '/marketplace/item/99/',
+      ariaLabel: 'PS5 Slim, ₪1,800, Haifa, HA, listing 99',
+      price: '₪1,800',
+    });
+    const listing = extractSingleListing(link);
+    expect(listing).not.toBeNull();
+    expect(listing!.title).toBe('PS5 Slim');
+    expect(listing!.location).toBeUndefined(); // no img alt → no location
+  });
+
+  it('handles title with commas via aria-label fallback', () => {
+    const link = makeCardLink({
+      href: '/marketplace/item/55/',
+      ariaLabel: 'Ps5, פלייסטיישן 5, ₪1,500, אשקלון, D, listing 55',
+      imgAlt: 'Ps5, פלייסטיישן 5 in אשקלון, D',
+      price: '₪1,500',
+    });
+    const listing = extractSingleListing(link);
+    expect(listing).not.toBeNull();
+    expect(listing!.title).toBe('Ps5, פלייסטיישן 5');
+    expect(listing!.location).toBe('אשקלון, D');
+  });
+
+  it('omits optional fields gracefully when absent', () => {
+    const link = makeCardLink({
+      href: '/marketplace/item/42/',
+      ariaLabel: 'Used Camera, $500, City, XX, listing 42',
       price: '$500',
     });
-
-    const listing = extractSingleListing(element);
+    const listing = extractSingleListing(link);
     expect(listing).not.toBeNull();
     expect(listing!.location).toBeUndefined();
     expect(listing!.imageUrl).toBeUndefined();
-    expect(listing!.sellerName).toBeUndefined();
   });
 
-  it('returns null when the listing link is missing', () => {
-    const element = makeListingMarkup({
-      href: null,
-      title: 'No URL',
-      price: '$10',
-    });
-    expect(extractSingleListing(element)).toBeNull();
+  it('returns null when href is missing', () => {
+    const link = makeCardLink({ imgAlt: 'PS5 in Tel Aviv, TA', price: '$10' });
+    expect(extractSingleListing(link)).toBeNull();
   });
 
-  it('returns null when the listing has no valid listing id', () => {
-    const element = makeListingMarkup({
+  it('returns null when href has no valid listing id', () => {
+    const link = makeCardLink({
       href: '/marketplace/category/foo',
-      title: 'Bad URL',
+      imgAlt: 'PS5 in Tel Aviv, TA',
       price: '$10',
     });
-    expect(extractSingleListing(element)).toBeNull();
+    expect(extractSingleListing(link)).toBeNull();
   });
 
-  it('returns null when title is missing', () => {
-    const element = makeListingMarkup({
+  it('returns null when no title can be extracted', () => {
+    const link = makeCardLink({
       href: '/marketplace/item/77/',
-      title: null,
       price: '$10',
+      // no imgAlt, no ariaLabel
     });
-    expect(extractSingleListing(element)).toBeNull();
+    expect(extractSingleListing(link)).toBeNull();
   });
 
-  it('returns null when price is missing or unparseable', () => {
-    const element = makeListingMarkup({
+  it('returns null when price is unparseable ("Free")', () => {
+    const link = makeCardLink({
       href: '/marketplace/item/77/',
-      title: 'Free Stuff',
+      imgAlt: 'Free Stuff in Tel Aviv, TA',
       price: 'Free',
     });
-    expect(extractSingleListing(element)).toBeNull();
+    expect(extractSingleListing(link)).toBeNull();
   });
 
-  it('uses empty string searchQuery when current URL has none', () => {
+  it('returns null when price is absent', () => {
+    const link = makeCardLink({
+      href: '/marketplace/item/77/',
+      imgAlt: 'PS5 in Tel Aviv, TA',
+    });
+    expect(extractSingleListing(link)).toBeNull();
+  });
+
+  it('uses empty searchQuery when current URL has no query param', () => {
     setLocation('https://www.facebook.com/marketplace/search/');
-    const element = makeListingMarkup({
+    const link = makeCardLink({
       href: '/marketplace/item/9/',
-      title: 'Item',
+      imgAlt: 'Item in Tel Aviv, TA',
       price: '$1',
     });
-    const listing = extractSingleListing(element);
+    const listing = extractSingleListing(link);
     expect(listing).not.toBeNull();
     expect(listing!.searchQuery).toBe('');
   });
@@ -337,6 +320,23 @@ describe('extractSingleListing', () => {
 // -----------------------------------------------------------------------------
 // extractListingsFromSearchPage — integration over a mock document
 // -----------------------------------------------------------------------------
+
+/** Builds a full Facebook search page HTML with multiple card links. */
+function makeSearchPage(cards: Array<{
+  id: string;
+  title: string;
+  price: string;
+  city?: string;
+  district?: string;
+  imgSrc?: string;
+}>): string {
+  return `<div>${cards.map(c => {
+    const loc = c.city && c.district ? `${c.city}, ${c.district}` : '';
+    const alt = loc ? `${c.title} in ${loc}` : c.title;
+    const img = `<img alt="${alt}"${c.imgSrc ? ` src="${c.imgSrc}"` : ''}>`;
+    return `<div><a href="/marketplace/item/${c.id}/" aria-label="${c.title}, ${c.price}, ${loc}, listing ${c.id}">${img}<span>${c.price}</span></a></div>`;
+  }).join('')}</div>`;
+}
 
 describe('extractListingsFromSearchPage', () => {
   beforeEach(() => {
@@ -355,31 +355,12 @@ describe('extractListingsFromSearchPage', () => {
   });
 
   it('extracts multiple listings and skips invalid ones', () => {
-    document.body.innerHTML = `
-      <div>
-        <div data-testid="marketplace_search_result">
-          <a href="/marketplace/item/100/">link</a>
-          <h3>Item One</h3>
-          <span class="price">$50</span>
-          <span data-testid="location">Tel Aviv</span>
-        </div>
-        <div data-testid="marketplace_search_result">
-          <a href="/marketplace/item/200/">link</a>
-          <h3>Item Two</h3>
-          <span class="price">₪ 2,000</span>
-          <img data-testid="listing_image" src="https://cdn.example.com/i.jpg" />
-          <span data-testid="seller_name">Jane</span>
-        </div>
-        <div data-testid="marketplace_search_result">
-          <a href="/marketplace/item/300/">link</a>
-          <h3>Item Three</h3>
-          <span class="price">Free</span>
-        </div>
-        <div data-testid="marketplace_search_result">
-          <h3>No URL</h3>
-          <span class="price">$10</span>
-        </div>
-      </div>
+    document.body.innerHTML = makeSearchPage([
+      { id: '100', title: 'Item One', price: '$50', city: 'Tel Aviv', district: 'TA' },
+      { id: '200', title: 'Item Two', price: '₪2,000', city: 'Haifa', district: 'HA', imgSrc: 'https://cdn.example.com/i.jpg' },
+    ]) + `
+      <div><a href="/marketplace/item/300/"><img alt="Free stuff in Tel Aviv, TA"><span>Free</span></a></div>
+      <div><span>no link here</span></div>
     `;
 
     const listings = extractListingsFromSearchPage();
@@ -388,12 +369,21 @@ describe('extractListingsFromSearchPage', () => {
     expect(listings[0].listingId).toBe('100');
     expect(listings[0].title).toBe('Item One');
     expect(listings[0].price).toBe(50);
-    expect(listings[0].location).toBe('Tel Aviv');
+    expect(listings[0].location).toBe('Tel Aviv, TA');
     expect(listings[0].searchQuery).toBe('ps5');
 
     expect(listings[1].listingId).toBe('200');
     expect(listings[1].price).toBe(2000);
-    expect(listings[1].imageUrl).toBe('https://cdn.example.com/i.jpg');
-    expect(listings[1].sellerName).toBe('Jane');
+    expect(listings[1].imageUrl).toContain('cdn.example.com/i.jpg');
+  });
+
+  it('deduplicates cards with the same listing id', () => {
+    document.body.innerHTML = makeSearchPage([
+      { id: '500', title: 'PS5', price: '₪1,500', city: 'Tel Aviv', district: 'TA' },
+      { id: '500', title: 'PS5 duplicate', price: '₪1,500', city: 'Tel Aviv', district: 'TA' },
+    ]);
+    const listings = extractListingsFromSearchPage();
+    expect(listings).toHaveLength(1);
+    expect(listings[0].title).toBe('PS5');
   });
 });

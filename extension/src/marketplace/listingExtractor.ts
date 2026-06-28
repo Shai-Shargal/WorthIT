@@ -1,57 +1,21 @@
 /**
- * Listing extraction helpers for the passive collection pipeline.
+ * Listing extraction for Facebook Marketplace search pages.
  *
- * These functions parse Facebook Marketplace search result DOM into structured
- * {@link ObservedListing} records. They use multiple fallback selectors so
- * minor Facebook DOM changes do not break collection completely.
+ * DOM facts verified against live pages (2026-06-28):
+ *   - The <a href="/marketplace/item/{id}/…"> tag wraps the entire card.
+ *   - <img alt="{title} in {city}, {district}"> is inside every card link.
+ *   - The first ₪-prefixed text node is the current price (a second one, if
+ *     present, is the struck-through original price — we ignore it).
+ *   - No stable role, data-testid, or class exists on the card container.
+ *
+ * Strategy: enumerate unique item links, derive everything from the <a> itself.
+ * No CSS class names. No card-root walking.
  */
 
 import { getSearchQuery } from './searchDetection.js';
 import type { ObservedListing } from './types.js';
 
-// -----------------------------------------------------------------------------
-// Selectors (ordered: most specific -> most generic)
-// -----------------------------------------------------------------------------
-
-const LISTING_ROOT_SELECTORS = [
-  '[data-testid="marketplace_search_result"]',
-  '[role="article"]',
-  '.marketplace-item',
-  'div[class*="listing"]',
-] as const;
-
-const TITLE_SELECTORS = [
-  '[data-testid="listing_title"]',
-  'h3',
-  'span[class*="title"]',
-] as const;
-
-const PRICE_SELECTORS = [
-  '[data-testid="listing_price"]',
-  'span[class*="price"]',
-  'div[class*="price"]',
-] as const;
-
-const LOCATION_SELECTORS = [
-  '[data-testid="location"]',
-  'span[class*="location"]',
-  'div[class*="area"]',
-] as const;
-
-const IMAGE_SELECTORS = [
-  'img[data-testid="listing_image"]',
-  'img[class*="image"]',
-  'img[class*="photo"]',
-  'img[alt*="listing"]',
-  'img',
-] as const;
-
-const SELLER_SELECTORS = [
-  '[data-testid="seller_name"]',
-  'a[class*="seller"]',
-  'span[class*="seller"]',
-  'div[class*="name"]',
-] as const;
+const PRICE_TEXT_RE = /[₪$€£]([\d,. ]+)/;
 
 // -----------------------------------------------------------------------------
 // Pure helpers
@@ -88,17 +52,13 @@ export function parsePrice(text: string | null | undefined): number {
   let numStr = match[0];
 
   if (numStr.includes(',') && numStr.includes('.')) {
-    // Both separators: the last one is the decimal separator.
     if (numStr.lastIndexOf('.') > numStr.lastIndexOf(',')) {
-      // US: 1,000.99
       numStr = numStr.replace(/,/g, '');
     } else {
-      // European: 1.000,99
       numStr = numStr.replace(/\./g, '').replace(',', '.');
     }
   } else if (numStr.includes(',')) {
     const parts = numStr.split(',');
-    // Two digits after the comma => decimal; otherwise thousands separator.
     if (parts.length === 2 && parts[1].length === 2) {
       numStr = numStr.replace(',', '.');
     } else {
@@ -115,41 +75,41 @@ export function parsePrice(text: string | null | undefined): number {
 // DOM helpers
 // -----------------------------------------------------------------------------
 
-function firstNonEmptyText(element: Element, selectors: readonly string[]): string | null {
-  for (const selector of selectors) {
-    try {
-      const found = element.querySelector(selector);
-      const text = found?.textContent?.trim();
-      if (text) return text;
-    } catch {
-      // Some selectors are unsupported in older engines; skip and continue.
-    }
+/**
+ * Walks text nodes inside `element` and returns the first one that looks like
+ * a price (leading currency symbol). Returns `null` if none found.
+ */
+function extractPriceTextNode(element: Element): string | null {
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  let node: Node | null;
+  while ((node = walker.nextNode())) {
+    const text = node.textContent?.trim();
+    if (text && PRICE_TEXT_RE.test(text)) return text;
   }
   return null;
 }
 
-export function extractLocation(element: Element): string | null {
-  return firstNonEmptyText(element, LOCATION_SELECTORS);
+/**
+ * Splits `img[alt]` on the last occurrence of ` in ` to extract title and
+ * location. Facebook formats this as "{title} in {city}, {district}".
+ * Returns `[null, undefined]` when the pattern is absent.
+ */
+function splitImgAlt(alt: string): [string | null, string | undefined] {
+  const sep = ' in ';
+  const idx = alt.lastIndexOf(sep);
+  if (idx <= 0) return [null, undefined];
+  return [alt.substring(0, idx).trim() || null, alt.substring(idx + sep.length).trim() || undefined];
 }
 
-export function extractSellerName(element: Element): string | null {
-  return firstNonEmptyText(element, SELLER_SELECTORS);
-}
-
-export function extractImageUrl(element: Element): string | null {
-  for (const selector of IMAGE_SELECTORS) {
-    try {
-      const img = element.querySelector(selector) as HTMLImageElement | null;
-      if (img) {
-        // Prefer the live .src (jsdom resolves it absolute), fall back to attr.
-        const src = (img.src && img.src.length > 0) ? img.src : img.getAttribute('src');
-        if (src) return src;
-      }
-    } catch {
-      // Skip and continue.
-    }
-  }
-  return null;
+/**
+ * Fallback title extraction from the link's `aria-label`.
+ * Format: "{title}, {currency}{price}, {city}, {district}, listing {id}"
+ * The `, {currency_symbol}` sequence marks where the title ends.
+ */
+function titleFromAriaLabel(ariaLabel: string): string | null {
+  const idx = ariaLabel.search(/, [₪$€£]/);
+  if (idx <= 0) return null;
+  return ariaLabel.substring(0, idx).trim() || null;
 }
 
 // -----------------------------------------------------------------------------
@@ -157,79 +117,72 @@ export function extractImageUrl(element: Element): string | null {
 // -----------------------------------------------------------------------------
 
 /**
- * Extract a single listing from a search result element. Returns `null` when
- * any *required* field (URL, listing id, title, parseable price) is missing.
+ * Extracts a listing from a single `<a href="/marketplace/item/…">` element.
+ * Returns `null` when any required field (id, title, parseable price) is absent.
  */
-export function extractSingleListing(element: Element): ObservedListing | null {
-  const linkEl = element.querySelector('a[href*="/marketplace/item/"]');
-  const listingUrl = linkEl?.getAttribute('href');
-  if (!listingUrl) return null;
+export function extractSingleListing(link: HTMLAnchorElement): ObservedListing | null {
+  const href = link.getAttribute('href');
+  const listingId = extractListingId(href);
+  if (!listingId || !href) return null;
 
-  const listingId = extractListingId(listingUrl);
-  if (!listingId) return null;
+  const img = link.querySelector('img');
+  const [imgTitle, location] = splitImgAlt(img?.getAttribute('alt') ?? '');
 
-  const title = firstNonEmptyText(element, TITLE_SELECTORS);
+  const title = imgTitle ?? titleFromAriaLabel(link.getAttribute('aria-label') ?? '');
   if (!title) return null;
 
-  const priceText = firstNonEmptyText(element, PRICE_SELECTORS);
+  const priceText = extractPriceTextNode(link);
   const price = parsePrice(priceText);
   if (price < 0) return null;
 
-  const location = extractLocation(element) ?? undefined;
-  const imageUrl = extractImageUrl(element) ?? undefined;
-  const sellerName = extractSellerName(element) ?? undefined;
+  const imageUrl = img ? (img.src || img.getAttribute('src') || undefined) : undefined;
 
-  const currentHref = typeof window !== 'undefined' ? window.location.href : '';
-  const searchQuery = getSearchQuery(currentHref) ?? '';
+  const searchQuery = typeof window !== 'undefined'
+    ? (getSearchQuery(window.location.href) ?? '')
+    : '';
 
   return {
     marketplace: 'facebook',
     listingId,
-    listingUrl,
+    listingUrl: href,
     title,
     price,
     currency: 'ILS',
     location,
-    imageUrl,
-    sellerName,
+    imageUrl: imageUrl || undefined,
     searchQuery,
     observedAt: new Date(),
   };
 }
 
 /**
- * Find listing cards on the current page and extract every parseable one.
- *
- * Iterates through fallback root selectors until one yields matches, then
- * extracts each card. Cards with missing required fields are skipped (not
- * thrown). Returns an empty array when nothing parses.
+ * Finds all listing cards on the current search page and extracts every
+ * parseable one. Cards with missing required fields are skipped silently.
+ * Returns an empty array when no listings are found or the DOM is unavailable.
  */
 export function extractListingsFromSearchPage(): ObservedListing[] {
   if (typeof document === 'undefined') return [];
 
-  let elements: Element[] = [];
-  for (const selector of LISTING_ROOT_SELECTORS) {
-    try {
-      const found = document.querySelectorAll(selector);
-      if (found.length > 0) {
-        elements = Array.from(found);
-        break;
-      }
-    } catch {
-      // Ignore selectors unsupported by the host engine.
-    }
-  }
+  const links = Array.from(
+    document.querySelectorAll<HTMLAnchorElement>('a[href*="/marketplace/item/"]'),
+  );
 
-  if (elements.length === 0) return [];
-
+  const seen = new Set<string>();
   const listings: ObservedListing[] = [];
-  for (const element of elements) {
+
+  for (const link of links) {
+    const href = link.getAttribute('href') ?? '';
+    const idMatch = href.match(/\/marketplace\/item\/(\d+)/);
+    if (!idMatch || seen.has(idMatch[1])) continue;
+    seen.add(idMatch[1]);
+
     try {
-      const listing = extractSingleListing(element);
+      const listing = extractSingleListing(link);
       if (listing) listings.push(listing);
     } catch {
       // Never abort the whole batch because one card threw.
     }
   }
+
   return listings;
 }
