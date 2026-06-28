@@ -4,6 +4,14 @@ import type { AnalyzeProductResponse, ProductInput } from '../../../shared/types
 export async function getApiBase(): Promise<string> {
   const stored = await chrome.storage.sync.get(['apiBase']);
   const base = typeof stored.apiBase === 'string' ? stored.apiBase.trim() : '';
+
+  // Migrate: if storage has an old localhost URL, clear it so the new
+  // DEFAULT_API_BASE (production Vercel URL) takes over automatically.
+  if (base && base.includes('localhost')) {
+    await chrome.storage.sync.remove('apiBase');
+    return DEFAULT_API_BASE;
+  }
+
   return base || DEFAULT_API_BASE;
 }
 
