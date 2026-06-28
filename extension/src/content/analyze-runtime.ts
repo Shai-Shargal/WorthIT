@@ -39,49 +39,40 @@ function setLastExtractedUrl(url: string): void {
   _g.__worthit_lastUrl = url;
 }
 
-// Extract the listing ID from a Facebook Marketplace URL.
-function listingIdFromUrl(url: string): string | null {
-  const match = url.match(/\/marketplace\/item\/(\d+)/);
-  return match?.[1] ?? null;
-}
-
 // Wait for Facebook's SPA to finish rendering the listing at the current URL.
 //
 // Problem: SPA navigation updates location.href immediately, but the DOM
 // (h1 title, price, description) still shows the PREVIOUS listing for
 // 500–3000 ms. Extracting immediately returns stale data.
 //
-// Solution: extract the listing ID from the DOM (via og:url, which Facebook
-// updates with the DOM). Poll until the DOM's listing ID matches the URL's
-// listing ID, guaranteeing freshness of the actual content.
+// Solution: on URL change (new listing detected), wait 2.5 seconds to let
+// Facebook's SPA finish DOM re-rendering. Then poll extractActiveListing()
+// until we get a valid product. This is simple and reliable — no timing
+// detection heuristics, just wait long enough for the worst case.
 async function waitForFreshListing(timeoutMs = 8000): Promise<ReturnType<typeof extractActiveListing>> {
   const currentUrl = location.href;
-  const targetListingId = listingIdFromUrl(currentUrl);
+  const lastUrl = getLastExtractedUrl();
+  const isNewListing = lastUrl !== null && lastUrl !== currentUrl;
+
+  // If this is a new listing (URL changed since last extraction), wait for
+  // the DOM to re-render. 2.5s covers p99 of Facebook's SPA re-render times.
+  if (isNewListing) {
+    await new Promise((r) => setTimeout(r, 2500));
+    if (location.href !== currentUrl) return null;
+  }
+
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
     if (location.href !== currentUrl) return null;
 
-    // Read the listing ID from og:url meta tag — Facebook updates this
-    // together with the DOM, so it's a reliable indicator of freshness.
-    const ogUrl = document.querySelector('meta[property="og:url"]')?.getAttribute('content') ?? '';
-    const domListingId = listingIdFromUrl(ogUrl);
-
-    // If we have a target ID and it doesn't match the DOM yet, the DOM is
-    // still stale — keep waiting.
-    if (targetListingId && domListingId && domListingId !== targetListingId) {
-      await new Promise((r) => setTimeout(r, 200));
-      continue;
-    }
-
-    // DOM appears fresh (or we can't determine — extract and let the caller decide).
     const product = extractActiveListing();
     if (product && product.price > 0) {
       setLastExtractedUrl(currentUrl);
       return product;
     }
 
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 300));
   }
 
   return null;
