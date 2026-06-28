@@ -26,49 +26,45 @@ function watchForUrlChange(): void {
 }
 
 // Extract the numeric listing ID from a Facebook Marketplace item URL.
-// e.g. "https://www.facebook.com/marketplace/item/4375988652666501/?..." → "4375988652666501"
 function listingIdFromUrl(url: string): string | null {
   return url.match(/\/marketplace\/item\/(\d+)/)?.[1] ?? null;
 }
 
-// Read the listing ID that the DOM currently reflects. Facebook updates the
-// og:url meta tag alongside the DOM content, so it reliably tells us which
-// listing is actually rendered — unlike location.href which changes first.
-function domListingId(): string | null {
-  const ogUrl =
-    document.querySelector('meta[property="og:url"]')?.getAttribute('content') ?? '';
-  return listingIdFromUrl(ogUrl);
-}
+// The URL of the last listing we successfully extracted data from.
+// Used to detect SPA navigation so we can wait for the DOM to re-render
+// before extracting the new listing.
+let lastExtractedUrl: string | null = null;
 
 // Wait for Facebook's SPA to finish rendering the listing at the current URL.
-// Problem: SPA navigation updates location.href immediately but the DOM
-// (title, price, description) still shows the previous listing for 500-1500ms.
-// Naive extraction returns stale data with the new URL attached.
 //
-// Solution: compare the listing ID in location.href against the ID reflected
-// in og:url (which Facebook updates together with the DOM). Only extract once
-// they match — meaning the DOM has caught up with the URL.
+// Problem: SPA navigation updates location.href immediately, but the DOM
+// (h1 title, price, description) still shows the PREVIOUS listing for
+// 500–1500 ms. Extracting immediately returns stale data under the new URL.
+//
+// Solution: track which URL we last extracted from. On a URL change, add a
+// fixed 1.5 s wait — enough for Facebook to finish re-rendering — before
+// we start extraction attempts. On the same URL (re-analyze same listing),
+// no delay is added.
 async function waitForFreshListing(timeoutMs = 6000): Promise<ReturnType<typeof extractActiveListing>> {
-  const deadline = Date.now() + timeoutMs;
   const currentUrl = location.href;
-  const targetId = listingIdFromUrl(currentUrl);
+
+  // New listing detected — wait for SPA re-render before reading the DOM.
+  if (lastExtractedUrl !== null && lastExtractedUrl !== currentUrl) {
+    await new Promise((r) => setTimeout(r, 1500));
+    // Abort if the user navigated away again during the wait.
+    if (location.href !== currentUrl) return null;
+  }
+
+  const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
-    // Abort if user navigated away while we were waiting.
     if (location.href !== currentUrl) return null;
 
-    // If we can identify the target listing ID, wait until the DOM reflects it.
-    if (targetId) {
-      const domId = domListingId();
-      if (domId && domId !== targetId) {
-        // DOM is still showing the previous listing — wait for re-render.
-        await new Promise((r) => setTimeout(r, 200));
-        continue;
-      }
-    }
-
     const product = extractActiveListing();
-    if (product && product.price > 0) return product;
+    if (product && product.price > 0) {
+      lastExtractedUrl = currentUrl;
+      return product;
+    }
 
     await new Promise((r) => setTimeout(r, 300));
   }
